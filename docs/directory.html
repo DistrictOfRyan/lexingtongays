@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LGBTQ+ Friendly Business Directory - Lexington, KY | Lexington Gays</title>
+    <meta name="description" content="The most comprehensive directory of LGBTQ+ owned and friendly businesses in Lexington, KY. Bars, restaurants, coffee shops, tattoo studios, affirming churches, health providers, and more — searchable and filterable.">
+    <meta name="keywords" content="Lexington LGBTQ businesses, Lexington gay friendly, queer owned Lexington, LGBTQ directory Oklahoma, Lexington gay bars, Lexington queer community, gay friendly restaurants Lexington, LGBTQ affirming Lexington">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="LGBTQ+ Friendly Business Directory - Lexington | Lexington Gays">
+    <meta property="og:description" content="The most comprehensive directory of LGBTQ+ owned and friendly businesses in Lexington, KY. 80+ businesses across 13 categories.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.lexingtongays.com/directory.html">
+    <meta property="og:site_name" content="Lexington Gays">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="LGBTQ+ Friendly Business Directory - Lexington | Lexington Gays">
+    <meta name="twitter:description" content="The most comprehensive directory of LGBTQ+ owned and friendly businesses in Lexington, KY.">
+    <link rel="canonical" href="https://www.lexingtongays.com/directory.html">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Poiret+One&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3ZGBZH6554"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-3ZGBZH6554');
+    </script>
+
+    <!-- Schema.org: Local Business Directory -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": "LGBTQ+ Friendly Businesses in Lexington, KY",
+      "description": "A curated directory of LGBTQ+ owned and affirming businesses in Lexington, KY.",
+      "url": "https://www.lexingtongays.com/directory.html"
+    }
+    </script>
+
+    <style>
+        /* ── Directory Intro ─────────────────────────────────────────────── */
+        .directory-intro {
+            text-align: center;
+            max-width: 650px;
+            margin: 0 auto 2rem;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+        .directory-intro a {
+            color: var(--peacock);
+            font-weight: 600;
+        }
+
+        /* ── Submit Form ─────────────────────────────────────────────────── */
+        .submit-section {
+            background: var(--bg-card);
+            border: 1px solid rgba(155, 30, 95, 0.3);
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .submit-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--gold), transparent);
+        }
+        .submit-section h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 1.2rem;
+            color: var(--gold);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+        .submit-section .submit-tagline {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        .submit-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+        .submit-form .full-width {
+            grid-column: 1 / -1;
+        }
+        .submit-form input,
+        .submit-form select,
+        .submit-form textarea {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid #2a2a2a;
+            color: var(--text-primary);
+            padding: 0.6rem 0.85rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+        .submit-form input:focus,
+        .submit-form select:focus,
+        .submit-form textarea:focus {
+            border-color: var(--gold);
+        }
+        .submit-form select {
+            appearance: none;
+            cursor: pointer;
+        }
+        .submit-form textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .submit-form input::placeholder,
+        .submit-form textarea::placeholder {
+            color: var(--dark-gray);
+        }
+        .submit-form select option {
+            background: var(--bg-secondary);
+        }
+        .submit-btn {
+            background: var(--gold);
+            color: white;
+            border: none;
+            padding: 0.7rem 2rem;
+            font-family: 'Cinzel', serif;
+            font-size: 0.85rem;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .submit-btn:hover { opacity: 0.85; }
+        .submit-btn:active { transform: scale(0.98); }
+        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .form-status {
+            font-size: 0.9rem;
+            padding: 0.6rem;
+            display: none;
+        }
+        .form-status.success { color: #4caf50; display: block; }
+        .form-status.error { color: #ef5350; display: block; }
+        @media (max-width: 600px) {
+            .submit-form { grid-template-columns: 1fr; }
+            .submit-form .full-width { grid-column: 1; }
+        }
+
+        /* ── Search & Filter Controls ────────────────────────────────────── */
+        .dir-controls {
+            margin-bottom: 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg);
+            padding: 1rem 0 0.75rem;
+            border-bottom: 1px solid rgba(155, 30, 95, 0.15);
+        }
+        .dir-search-wrap {
+            position: relative;
+            margin-bottom: 0.75rem;
+        }
+        .dir-search {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid #2a2a2a;
+            color: var(--text-primary);
+            padding: 0.7rem 1rem 0.7rem 2.5rem;
+            font-family: inherit;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .dir-search:focus { border-color: var(--gold); }
+        .dir-search::placeholder { color: var(--dark-gray); }
+        .search-icon {
+            position: absolute;
+            left: 0.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--dark-gray);
+            font-size: 1rem;
+            pointer-events: none;
+        }
+        .dir-search-clear {
+            position: absolute;
+            right: 0.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--dark-gray);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: 0;
+            display: none;
+        }
+        .dir-search-clear:hover { color: var(--text-primary); }
+        .filter-scroll {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        .filter-scroll::-webkit-scrollbar { display: none; }
+        .filter-btn {
+            background: var(--bg-card);
+            border: 1px solid #2a2a2a;
+            color: var(--text-secondary);
+            padding: 0.4rem 0.9rem;
+            font-size: 0.78rem;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .filter-btn:hover {
+            border-color: var(--gold);
+            color: var(--text-primary);
+        }
+        .filter-btn.active {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: white;
+        }
+
+        /* ── Business Cards ──────────────────────────────────────────────── */
+        .category-section {
+            margin-bottom: 3rem;
+        }
+        .category-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.5rem;
+            color: var(--gold);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            padding-bottom: 8px;
+        }
+        .category-divider {
+            height: 1px;
+            background: var(--gold);
+            opacity: 0.3;
+            margin-bottom: 16px;
+            border: none;
+        }
+        .biz-card {
+            background: var(--bg-card);
+            border: 1px solid #1e1e1e;
+            padding: 16px 20px;
+            margin-bottom: 8px;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
+        .biz-card:hover {
+            background: var(--bg-card-hover);
+            border-color: #2a2a2a;
+        }
+        .biz-card.hidden { display: none; }
+        .biz-name {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+        .biz-name a { color: var(--text-primary); }
+        .biz-name a:hover { color: var(--peacock); }
+        .biz-address {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .biz-desc {
+            font-size: 0.85rem;
+            color: var(--dark-gray);
+            line-height: 1.5;
+        }
+        .biz-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border: 1px solid rgba(155, 30, 95, 0.4);
+            color: var(--gold);
+            margin-left: 6px;
+            vertical-align: middle;
+            font-family: 'Cinzel', serif;
+        }
+
+        /* ── No Results ──────────────────────────────────────────────────── */
+        .no-results {
+            display: none;
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+        .no-results.visible { display: block; }
+        .no-results p { margin-bottom: 0.5rem; }
+        .no-results a { color: var(--gold); }
+
+        /* ── Results Count ───────────────────────────────────────────────── */
+        .results-count {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-align: right;
+            margin-bottom: 1rem;
+            min-height: 1.2em;
+        }
+
+        /* ── Sources ─────────────────────────────────────────────────────── */
+        .directory-sources {
+            text-align: center;
+            max-width: 650px;
+            margin: 3rem auto 0;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(155,30,95,0.2);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="index.html" class="logo-area">
+                <div>
+                    <div class="logo-text"><span class="lexington">LEXINGTON</span> <img src="images/flamingo.png" alt="" class="logo-flamingo"> <span class="gays">GAYS</span></div>
+                    <div class="logo-tagline">Your Weekly LGBTQ+ Event Guide</div>
+                </div>
+            </a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('nav').classList.toggle('open')">&#9776;</button>
+            <nav>
+                <ul>
+                    <li><a href="index.html">This Week</a></li>
+                    <li><a href="archive.html">Archive</a></li>
+                    <li><a href="blog/index.html">Blog</a></li>
+                    <li><a href="directory.html" class="active">Directory</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="https://instagram.com/lexingtongays" target="_blank" rel="noopener">Instagram</a></li>
+                    <li><a href="https://linktr.ee/lexingtongays" target="_blank" rel="noopener">Linktree</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container">
+        <div style="text-align:center;padding:3rem 1rem;max-width:600px;margin:0 auto;">
+            <h2 style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:1rem;">Directory in progress</h2>
+            <p style="color:var(--text-secondary);line-height:1.7;">Lexington Gays just launched. The directory is being built from scratch with verified LGBTQ+ owned and friendly businesses in Lexington, KY. Check back in 2-4 weeks, or <a href="submit.html" style="color:var(--peacock);">submit your business</a> to be added.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <p>Follow us on Instagram: <a href="https://instagram.com/lexingtongays" target="_blank" rel="noopener">@lexingtongays</a> &middot; <a href="https://linktr.ee/lexingtongays" target="_blank" rel="noopener">All Links</a></p>
+            <p>Updated weekly &middot; Your guide to LGBTQ+ Lexington</p>
+        </div>
+    </footer>
+
+    <!-- ══ SEARCH + FILTER JAVASCRIPT ══════════════════════════════════════ -->
+    <script>
+    (function() {
+        const searchInput = document.getElementById('dirSearch');
+        const searchClear = document.getElementById('searchClear');
+        const filterBtns  = document.querySelectorAll('.filter-btn');
+        const sections    = document.querySelectorAll('.category-section');
+        const bizCards    = document.querySelectorAll('.biz-card');
+        const noResults   = document.getElementById('noResults');
+        const countEl     = document.getElementById('resultsCount');
+
+        let activeFilter = 'all';
+        let searchQuery  = '';
+
+        function updateDisplay() {
+            let visibleTotal = 0;
+
+            sections.forEach(section => {
+                const cat = section.dataset.cat;
+                const catMatch = (activeFilter === 'all' || activeFilter === cat);
+
+                if (!catMatch) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                section.style.display = '';
+                let sectionVisible = 0;
+
+                section.querySelectorAll('.biz-card').forEach(card => {
+                    const text = card.textContent.toLowerCase();
+                    const matches = !searchQuery || text.includes(searchQuery);
+                    card.style.display = matches ? '' : 'none';
+                    if (matches) sectionVisible++;
+                });
+
+                // Hide section entirely if search has no hits in it
+                if (searchQuery && sectionVisible === 0) {
+                    section.style.display = 'none';
+                } else {
+                    visibleTotal += sectionVisible;
+                }
+            });
+
+            // No results message
+            if (visibleTotal === 0 && (searchQuery || activeFilter !== 'all')) {
+                noResults.classList.add('visible');
+                countEl.textContent = '';
+            } else {
+                noResults.classList.remove('visible');
+                if (searchQuery || activeFilter !== 'all') {
+                    countEl.textContent = visibleTotal + ' business' + (visibleTotal === 1 ? '' : 'es') + ' shown';
+                } else {
+                    countEl.textContent = '';
+                }
+            }
+
+            // Show/hide clear button
+            searchClear.style.display = searchQuery ? 'block' : 'none';
+        }
+
+        // Search handler
+        searchInput.addEventListener('input', function() {
+            searchQuery = this.value.toLowerCase().trim();
+            updateDisplay();
+        });
+
+        // Clear search
+        searchClear.addEventListener('click', function() {
+            searchInput.value = '';
+            searchQuery = '';
+            searchInput.focus();
+            updateDisplay();
+        });
+
+        // Category filter handler
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                activeFilter = this.dataset.cat;
+                // Clear search when changing category
+                searchInput.value = '';
+                searchQuery = '';
+                updateDisplay();
+                // Scroll to top of directory
+                document.getElementById('dirControls').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+
+        // Keyboard shortcut: / to focus search
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '/' && document.activeElement !== searchInput) {
+                e.preventDefault();
+                searchInput.focus();
+                searchInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+
+    })();
+    </script>
+
+    <!-- ══ FORM SUBMISSION (AJAX via Formspree) ════════════════════════════ -->
+    <script>
+    (function() {
+        const form       = document.getElementById('bizSubmitForm');
+        const btn        = document.getElementById('submitBtn');
+        const statusEl   = document.getElementById('formStatus');
+
+        if (!form) return;
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Don't submit if using placeholder endpoint
+            if (form.action.includes('REPLACE_WITH_YOUR_ID')) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = 'Form not yet configured. DM us on Instagram @lexingtongays to submit a business.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            statusEl.className = 'form-status';
+            statusEl.textContent = '';
+
+            try {
+                const data = new FormData(form);
+                const res  = await fetch(form.action, {
+                    method: 'POST',
+                    body: data,
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (res.ok) {
+                    statusEl.className = 'form-status success';
+                    statusEl.textContent = 'Submitted! We review every entry and will add qualifying businesses within a week.';
+                    form.reset();
+                } else {
+                    throw new Error('Server error');
+                }
+            } catch (err) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = 'Something went wrong. DM us on Instagram @lexingtongays instead.';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Submit Business';
+        });
+    })();
+    </script>
+
+</body>
+</html>

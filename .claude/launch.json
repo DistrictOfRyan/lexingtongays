@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lexingtongays-slides",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "slides", "-l", "3456", "--no-clipboard"],
+      "port": 3456
+    }
+  ,{
+      "name": "lexingtongays-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "C:/Users/willi/lexingtongays/docs", "-l", "3457", "--no-clipboard"],
+      "port": 3457
+    }
+  ]
+}

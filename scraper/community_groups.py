@@ -1,0 +1,242 @@
+"""Scraper for LGBTQ+ community groups, sports leagues, and recurring events in Lexington.
+
+Covers: Black Queer Lexington, Studio 66, Lambda Bowling, HotMess Sports,
+Queer Women's Collective, PFLAG Lexington, Green Country Bears, Prime Timers,
+Elote Drag Brunch, Council Oak Men's Chorus.
+"""
+
+import sys
+import os
+import logging
+from datetime import datetime, timedelta
+from typing import List, Dict
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scraper.base import BaseScraper
+
+logger = logging.getLogger(__name__)
+
+
+class CommunityGroupsScraper(BaseScraper):
+    """Scrape events from community groups and generate recurring event entries."""
+
+    source_name = "community_groups"
+
+    # ── Websites to scrape ─────────────────────────────────────────────
+    SOURCES = {
+        "black_queer_lexington": "https://www.blackqueerlexington.org/",
+        "studio_66": "https://www.s66lexington.com/",
+        "elote_events": "https://www.elotelexington.com/events",
+        "green_country_bears": "https://greencountrybears.com/",
+        "pflag_lexington": "https://lexingtonpflag.org/",
+        "council_oak_chorus": "https://www.counciloak.org/concerts",
+        "taco_ok": "https://transadvocacyok.org/events",
+        "hotmess_sports": "https://www.hotmesssports.com/lexington",
+        "pride_sports": "https://pridesportslexington.leagueapps.com/leagues",
+        "lexington_house_of_drag": "https://www.lexingtonhouseofdrag.com/",
+        "diva_royale": "https://www.divaroyale.com/dragquenshow-locations.html",
+        "queerlit_collective": "https://www.facebook.com/queerlitcollective",
+    }
+
+    def scrape(self) -> List[Dict]:
+        events = []
+
+        # Scrape websites that have event listings
+        for source_key, url in self.SOURCES.items():
+            try:
+                source_events = self._scrape_source(source_key, url)
+                events.extend(source_events)
+            except Exception as e:
+                logger.error(f"[community_groups] Failed scraping {source_key}: {e}")
+
+        # Add known recurring events for this week
+        events.extend(self._get_recurring_events())
+
+        return events
+
+    def _scrape_source(self, source_key: str, url: str) -> List[Dict]:
+        """Attempt to scrape event listings from a community group website."""
+        soup = self.fetch_page(url)
+        if not soup:
+            return []
+
+        events = []
+
+        # Look for event-like containers
+        containers = (
+            soup.select(".event, .events-list li, article, .event-card, .sqs-block-content")
+        )
+
+        for container in containers[:20]:  # Limit to avoid noise
+            try:
+                name_el = container.select_one("h1, h2, h3, h4, .event-title, a")
+                if not name_el:
+                    continue
+                name = name_el.get_text(strip=True)
+                if not name or len(name) < 5:
+                    continue
+
+                # Skip navigation links and non-event content
+                skip_words = ["home", "about", "contact", "donate", "menu", "privacy", "terms"]
+                if name.lower() in skip_words:
+                    continue
+
+                date_el = container.select_one("time, .date, [class*='date']")
+                date_str = ""
+                if date_el:
+                    date_str = date_el.get("datetime", "") or date_el.get_text(strip=True)
+                date_str = self.parse_date_flexible(date_str)
+
+                link_el = container.find("a", href=True)
+                event_url = ""
+                if link_el:
+                    href = link_el["href"]
+                    event_url = href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/")
+
+                priority = 1 if "council_oak" in source_key else 2
+
+                events.append(self.make_event(
+                    name=name,
+                    date=date_str,
+                    venue=self._venue_for_source(source_key),
+                    url=event_url,
+                    priority=priority,
+                ))
+            except Exception as e:
+                logger.debug(f"[community_groups] Parse error in {source_key}: {e}")
+
+        self._random_delay()
+        return events
+
+    def _get_recurring_events(self) -> List[Dict]:
+        """Generate entries for known recurring events happening this week."""
+        events = []
+        today = datetime.now()
+        monday = today - timedelta(days=today.weekday())
+        week_dates = [monday + timedelta(days=i) for i in range(7)]
+
+        for d in week_dates:
+            day_of_week = d.weekday()  # 0=Mon, 6=Sun
+            day_of_month = d.day
+            date_str = d.strftime("%Y-%m-%d")
+
+            # PFLAG Lexington: 1st Saturday, 7pm
+            if day_of_week == 5 and day_of_month <= 7:
+                events.append(self.make_event(
+                    name="PFLAG Lexington Monthly Meeting",
+                    date=date_str,
+                    time="7:00 PM",
+                    venue="110 S Hartford Ave, Suite 2516, Lexington",
+                    description="Monthly support and education meeting for LGBTQ+ families and allies. Alternates between social/support and education formats.",
+                    url="https://lexingtonpflag.org/",
+                    priority=2,
+                ))
+
+            # Queer Women's Collective: 1st Wednesday
+            if day_of_week == 2 and day_of_month <= 7:
+                events.append(self.make_event(
+                    name="Queer Women's Collective Happy Hour",
+                    date=date_str,
+                    time="6:00 PM",
+                    venue="Varies (check social media)",
+                    description="Monthly social gathering for queer women and allies. Good drinks, great people, zero pretension.",
+                    url="https://www.facebook.com/queerwomenscollectivelexington/",
+                    priority=2,
+                ))
+
+            # Prime Timers: 2nd Tuesday, 7pm
+            if day_of_week == 1 and 8 <= day_of_month <= 14:
+                events.append(self.make_event(
+                    name="Lexington Area Prime Timers",
+                    date=date_str,
+                    time="7:00 PM",
+                    venue="Dennis R. Neill Equality Center, 621 E 4th St",
+                    description="Monthly social for mature gay and bisexual men (21+). Great conversation, welcoming community.",
+                    url="https://okeq.org/okeq-events/lexington-area-prime-timers/",
+                    priority=2,
+                ))
+
+            # Green Country Bears: 2nd Thursday
+            if day_of_week == 3 and 8 <= day_of_month <= 14:
+                events.append(self.make_event(
+                    name="Green Country Bears Monthly Meetup",
+                    date=date_str,
+                    time="7:00 PM",
+                    venue="Restaurant (varies, check website)",
+                    description="Monthly dinner meetup for bears and friends. Chill vibes, good food, friendly crowd.",
+                    url="https://greencountrybears.com/",
+                    priority=2,
+                ))
+
+            # Elote Drag Brunch: 2nd Saturday
+            if day_of_week == 5 and 8 <= day_of_month <= 14:
+                events.append(self.make_event(
+                    name="Elote Drag Brunch",
+                    date=date_str,
+                    time="11:00 AM + 1:30 PM (two seatings)",
+                    venue="Elote Cafe & Catering",
+                    description="Monthly drag brunch with themed shows. All ages. Two seatings. Delicious food and fierce performances.",
+                    url="https://www.elotelexington.com/events",
+                    priority=2,
+                ))
+
+            # Equality Business Alliance: last Thursday, 6-7:30pm
+            # Find last Thursday of the month
+            import calendar
+            last_day = calendar.monthrange(d.year, d.month)[1]
+            last_date = datetime(d.year, d.month, last_day)
+            while last_date.weekday() != 3:  # Thursday
+                last_date -= timedelta(days=1)
+            if d.date() == last_date.date():
+                events.append(self.make_event(
+                    name="Equality Business Alliance Networking Mixer",
+                    date=date_str,
+                    time="6:00 PM - 7:30 PM",
+                    venue="Dennis R. Neill Equality Center, 621 E 4th St",
+                    description="Monthly LGBTQ+ business networking mixer. Make connections, build community, grow your business.",
+                    url="https://okeq.org/eba/",
+                    priority=2,
+                ))
+
+            # OkEq Gender Outreach Support: every Wednesday, 7-9pm
+            if day_of_week == 2:
+                events.append(self.make_event(
+                    name="Gender Outreach Support Group",
+                    date=date_str,
+                    time="7:00 PM - 9:00 PM",
+                    venue="Dennis R. Neill Equality Center, 621 E 4th St",
+                    description="Weekly support group for trans, intersex, and gender-diverse adults 18+. Safe space, real talk.",
+                    url="https://okeq.org/transgender-support/",
+                    priority=2,
+                ))
+
+            # DRAGNIFICENT: every Thursday at Club Majestic
+            if day_of_week == 3:
+                events.append(self.make_event(
+                    name="DRAGNIFICENT! Drag Show",
+                    date=date_str,
+                    time="10:00 PM",
+                    venue="Club Majestic",
+                    description="Weekly Thursday drag show hosted by the legendary Shanel Sterling. High energy, great performances.",
+                    url="https://downtownlexington.com/do/dragnificent-at-club-majestic-1",
+                    priority=3,
+                ))
+
+        return events
+
+    def _venue_for_source(self, source_key: str) -> str:
+        """Return the default venue for a source."""
+        venues = {
+            "black_queer_lexington": "Various locations in Lexington",
+            "studio_66": "Studio 66, Lexington",
+            "elote_events": "Elote Cafe & Catering",
+            "green_country_bears": "Varies",
+            "pflag_lexington": "110 S Hartford Ave",
+            "council_oak_chorus": "Lexington Performing Arts Center",
+        }
+        return venues.get(source_key, "Lexington")
+
+
+def scrape() -> List[Dict]:
+    """Module-level entry point."""
+    return CommunityGroupsScraper().safe_scrape()

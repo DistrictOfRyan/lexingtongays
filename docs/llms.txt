@@ -1,0 +1,13 @@
+# Lexington Gays
+> Lexington's weekly LGBTQ+ event guide and community directory.
+
+## Key pages
+- /: This week's curated LGBTQ+ events with day-by-day schedule
+- /blog/: Long-form guides to gay Lexington, venues, neighborhoods, travel
+- /directory.html: Searchable directory of LGBTQ+ owned and friendly businesses
+
+## About
+Lexington Gays is a volunteer-run community resource. We publish a curated weekly
+LGBTQ+ event guide for Lexington, KY along with travel and lifestyle
+coverage of queer life in Lexington. No commercial intent. Coverage area is the
+Lexington metro.
