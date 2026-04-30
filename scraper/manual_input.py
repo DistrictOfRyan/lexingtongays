@@ -1,6 +1,6 @@
-"""Manual event input scraper.
+r"""Manual event input scraper.
 
-Reads a local JSON file at C:\Users\willi\lexingtongays\\data\\manual_events.json.
+Reads a local JSON file at C:\Users\willi\lexingtongays\data\manual_events.json.
 This is the intake point for events William finds on Slack, in emails, or anywhere else.
 
 The file format is a JSON array of event objects:

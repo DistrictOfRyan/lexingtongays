@@ -13,25 +13,30 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 from scraper import (
-    recurring,
-    okeq_calendar,
-    twisted_arts,
-    specific_orgs,
+    # Generic scrapers (work for any city via config.SOURCES URLs)
     eventbrite_meetup,
     community_calendars,
     extended_calendars,
     aa_meetings,
-    homo_hotel,
     community_groups,
     qlist,
     churches,
     bars,
     manual_input,
-    lexington_arts_district,
     facebook_events,
     ticketing_sites,
     timetree_scraper,
     slack_browser_scraper,
+    # City-specific scrapers (stubbed for Lexington — return []. Operator writes
+    # real Lexington implementations as the city's anchor orgs are scraped.)
+    recurring,
+    okeq_calendar,
+    twisted_arts,
+    specific_orgs,
+    homo_hotel,
+    # NOTE: lexington_arts_district was removed — Lexington has no single named
+    # "Arts District" like Tulsa. If a similar concept emerges (Distillery District,
+    # Manchester St area), add a new scraper module and import it here.
 )
 
 logger = logging.getLogger(__name__)
@@ -462,7 +467,7 @@ def run_all_scrapers() -> List[Dict]:
         ("community_groups", community_groups.scrape),
         ("churches", churches.scrape),
         ("bars", bars.scrape),
-        ("lexington_arts_district", lexington_arts_district.scrape),
+        # Lexington-specific arts district scraper would go here when one is written
         ("facebook_events", facebook_events.scrape),
         ("ticketing_sites", ticketing_sites.scrape),
         ("timetree_scraper", timetree_scraper.scrape),  # Lexington Isn't Boring -- iCal/Playwright/browser-flag

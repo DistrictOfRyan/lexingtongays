@@ -11,44 +11,50 @@ and used to sort slides. These rules are the source of truth — do not re-litig
 Awarded automatically to any event at a **true gay bar** OR matching a **super-gay keyword**.
 
 **True gay bar venues (always 5, regardless of event type):**
-- Club Majestic / Majestic Lexington (`124 N Boston`)
-- Lexington Eagle (`1338 E 3rd` or `1330 E 3rd`)
-- Yellow Brick Road
-- The Vanguard
-- Pump Bar (`602 S Lewis`)
+- The Bar Complex (`224 East Main St`) — Kentucky's oldest gay bar since 1980
+- Crossings Lexington (`117 N Limestone St`) — LGBTQ+ dive bar, opened as leather bar in 1980s
 
 **Keywords that trigger 5 (in event name or description):**
 - Any drag: `drag show`, `drag bingo`, `drag brunch`, `drag queen`, `drag king`, `drag race`,
   `drag sing`, `drag along`, `drag perform`, `drag night`, `dragnificent`
 - Pride events: `pride show`, `pride party`, `pride dance`, `pride night`
 - Community identifiers: `queer night`, `gay night`, `lgbtq+ night`, `rainbow night`,
-  `twisted arts`, `queer cabaret`, `homo hotel`, `hhhh`
+  `queer cabaret`
 - Support/identity: `queer support group`, `lgbtq support group`, `gender outreach support`,
   `queer women`, `sapphic social`, `queer social`, `trans support group`,
-  `osu lexington queer`, `pflag lexington`, `queer support`, `pflag`, `lambda unity`, `lambda bowling`
+  `transkentucky`, `pflag central ky`, `queer support`, `pflag`
 - Crawls: `bar crawl`, `pub crawl`, `pride crawl`
-- Recurring drag-hosted shows: `gabbin with gabbi`
-- Production companies (always gay): `pride nation entertainment`, `brad lee` (Brad Lee Ent)
-- Dedicated lesbian events: `lesbian attachment`
+- Lexington-specific orgs and events: `imperial court of kentucky`, `kentucky black pride`,
+  `bluegrass black pride`, `kentucky bourbon bears`, `kentucky fried sisters`,
+  `last wednesgays`, `wednesgays`, `frontrunners lex`, `north american bear weekend`,
+  `world bear weekend`, `bear weekend`, `lexington pride festival`, `popp presents`,
+  `drag underground`, `queer communion`
 
 ---
 
 ### 4 Flamingos — Very Queer
 **Queer-friendly venues that aren't exclusively gay bars:**
-- DVL Club & Lounge (`302 S Frankfort`)
-- Elote (`any Elote location`)
+- Lussi Brown Coffee Bar — queer-owned, woman-owned
+- Third Street Stuff and Coffee — LGBTQ+ owned
+- Epping's on Eastside / Poppy & Olive — drag brunch host
+- Lockbox at 21c Museum Hotel — drag brunch host
+- Bar Ona — Esquire-rated cocktail bar, queer-friendly
 
 **Keywords that trigger 4:**
 - Identity terms: `lgbtq`, `lgbt`, `queer`, `lesbian`, `bisexual`, `sapphic`,
   `transgender`, `nonbinary`, `non-binary`, `gender outreach`
-- Organizations: `equality center`, `okeq`, `pflag`, `hrc`, `gay bar`, `gay club`
+- Lexington orgs: `lexington pride center`, `pride community services`, `fairness campaign`,
+  `queer kentucky`, `uk lgbtq`, `university of kentucky lgbtq`,
+  `avol`, `aids volunteers of lexington`, `new song`, `sister sound`,
+  `lex gsa`, `trans parent lex`, `translex`, `be lexproud`, `lexproud`
 - Event types: `queer collective`, `queer crafters`, `support group`, `trans support`,
-  `queer women's`, `council oak`
+  `queer women's`, `equality center`, `gay bar`, `gay club`
 - Arts: `musical`, `the musical`, `opera`, `broadway`
 - Pride (generic): `pride`, `pride month`, `rainbow pride`
 
 **Source-based 4s:**
-- Events from `homo_hotel` or `okeq` sources are 4 minimum (unless already 5 by keyword/venue)
+- Events from `lex_pride_center`, `lex_pride_festival`, `transkentucky`, `pflag_central_ky`,
+  `imperial_court_ky` sources score 4 minimum (unless already 5 by keyword/venue)
 
 ---
 
@@ -56,16 +62,16 @@ Awarded automatically to any event at a **true gay bar** OR matching a **super-g
 Awarded when the event comes from a trusted LGBTQ community source AND matches a community keyword,
 OR the event name matches a specific 3-tier phrase.
 
-**Community sources:** `homo_hotel`, `okeq`, `recurring`, `manual`
+**Community sources:** `lex_pride_center`, `transkentucky`, `recurring`, `manual`
 
 **Community keywords that lift to 3:**
 `support`, `group`, `meeting`, `collective`, `social`, `community`, `bowling`, `yoga`,
-`meditation`, `sound bath`, `seniors`, `testing`, `coffee`
+`meditation`, `seniors`, `testing`, `coffee`
 
 **Specific phrases that are always 3 (regardless of source):**
 - `first friday art crawl`, `art crawl` — welcoming community crawl, known LGBTQ turnout
 - All performing arts keywords: `ballet`, `symphony`, `orchestra`, `choir`, `chorale`, `choral`, `performing arts`, `theatre`, `theater`, `cabaret`, `live performance`, `stage production`, `dance performance`, `recital`, `repertory`, `philharmonic`
-- LGBTQ-affirming venues/orgs (not exclusively gay but always 3+): `all souls` (All Souls Unitarian)
+- Lexington's affirming faith venues (always 3+): `uucl`, `unitarian universalist church of lexington`, `bluegrass ucc`, `bluegrass church`, `beaumont presbyterian`, `maxwell presbyterian`, `christ church cathedral`, `woven church`
 
 ---
 
@@ -90,8 +96,8 @@ nothing should score 1. If you're tempted to assign 1, ask if it belongs on the 
 ## Deduplication Rules
 
 - Events with the same name (substring match) on the same day are collapsed to one record
-- Source priority when deduping: `homo_hotel` > `okeq` > `recurring` > `manual` > everything else
-- HHHH variants all collapse: "Homo Hotel Happy Hour", "4H: Homo Hotel Happy Hour", etc.
+- Source priority when deduping: `lex_pride_center` > `lex_pride_festival` > `recurring` > `manual` > everything else
+- Signature event variants (when set) collapse to one record
 - Short names (under 7 chars) must be exact matches to trigger dedup
 
 ---
@@ -102,13 +108,10 @@ When an event only has a street address, display the business name instead:
 
 | Address fragment      | Display name            |
 |-----------------------|-------------------------|
-| 302 S Frankfort       | DVL Club & Lounge       |
-| 1338 E 3rd / 1330 E 3rd | Lexington Eagle          |
-| 602 S Lewis           | Pump Bar                |
-| 6808 S Memorial       | Loony Bin Comedy Club   |
-| 1124 S Lewis          | WEL Bar                 |
-| 1301 S Boston         | Boston Ave UMC          |
-| 2224 W 51st           | Zarrow Library          |
+| 224 E Main / 224 East Main | The Bar Complex     |
+| 117 N Limestone       | Crossings               |
+| 389 Waller            | Lexington Pride Center  |
+| 215 W Main            | Lexington Visitors Center |
 
 ---
 

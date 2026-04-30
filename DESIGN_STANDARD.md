@@ -1,12 +1,15 @@
 # Lexington Gays — Design Standard
 
-## TWO BRANDS — Keep them visually distinct
+## ONE BRAND (signature event slot reserved)
 
 ### BRAND 1: Lexington Gays (@lexingtongays)
 The weekly LGBTQ+ event guide. Modern, clean, trendy.
 
-### BRAND 2: HHHH (Homo Hotel Happy Hour)
-The signature monthly event. Art Deco, classy, campy.
+### BRAND 2: [Future signature event — slot reserved]
+Left open per Phase 0 intake. Strongest candidates: Last WednesGays (monthly recurring),
+Imperial Court of Kentucky Coronation (annual), North American Bear Weekend (annual).
+When operator picks one, populate config.SIGNATURE_EVENT and add a Brand 2 section
+following the TulsaGays HHHH pattern (Art Deco, contrasting colors).
 
 ---
 
@@ -74,60 +77,26 @@ Clean, bold, trendy. Poiret One font gives Art Deco DNA but the white+pink palet
 
 ---
 
-## HHHH Brand (Homo Hotel Happy Hour)
+## Signature Event Brand (slot reserved)
 
-### Style: Art Deco / Cocktail Lounge
-Dark, sophisticated, geometric. Vintage cocktail lounge poster energy.
+Per Phase 0 intake, no signature event has been selected yet. When operator picks one
+(top candidates: Last WednesGays / Imperial Court of Kentucky Coronation / North American
+Bear Weekend), this section documents the Art Deco contrast brand the way TulsaGays
+documents HHHH.
 
-### Color Palette
-
-| Color | Hex | Usage |
-|-------|-----|-------|
-| Background | `#0a0a0a` | All materials |
-| Dark Gold | `#8B7234` | "HOMO HOTEL", deco lines, accents, diamond ornaments |
-| Gold Light | `#A89050` | Secondary gold accents |
-| Peacock | `#00838F` | "HAPPY HOUR", featured labels |
-| Burnt Orange | `#BF5700` | "FIRST FRIDAY", top accent bar |
-| Hunter Green | `#355E3B` | Bottom accent bar |
-| Cream | `#F5E6C8` | Date/time, warm readable text |
-| White | `#ffffff` | Event names |
-
-### Typography
-
-| Element | Font | Size | Color |
-|---------|------|------|-------|
-| "HOMO HOTEL" | Impact | 72pt | Dark Gold |
-| "HAPPY HOUR" | Impact | 72pt / 56pt | Peacock / Cream |
-| "FIRST FRIDAY" | Segoe UI Semibold | 16pt | Burnt Orange |
-| Time / details | Segoe UI | 22pt | Cream |
-| "THE QUEEREST HH IN T-TOWN" | Segoe UI Semibold | 18pt | Gold Light |
-
-### Decorative Elements
-- **Top bar**: 4px burnt orange line
-- **Bottom bar**: 4px hunter green line
-- **Deco double lines**: 1px gold double-rule (4px gap)
-- **Diamond ornament**: Small gold diamond, centered section separator
-- **Gold flamingo**: Used as accent/mascot element
-- **4H grid**: Four colored H letters in boxes (burnt orange, gold, peacock, light gold)
-- **Lexington skyline silhouette**: Geometric buildings at bottom
-
-### Logo Variants (in `slides/hhhh-unified.html`)
-- **A: Full Banner** — deco frame, for covers/banners
-- **B: Profile Pic** — circle with 4H grid, for IG/FB profile
-- **C: Square Mark** — large 4H grid, for marketplace/print
-- **D: Campy Fun** — flamingo + rainbow letters, for social posts
+For now: Lexington Gays uses Brand 1 (modern geometric deco, white + neon pink) for
+all materials.
 
 ---
 
 ## Shared Rules
 
-- **Anonymity**: Ryan's name never appears anywhere
+- **Anonymity**: Operator's name never appears anywhere on public site or social
 - **Tone**: Casual, warm, sassy, community-focused, authentically human
 - **No**: em dashes, corporate speak, AI-tell words
-- **HHHH always #1**: When both brands mention events, HHHH is always the top featured event on first-Friday weeks
-- **Cross-promote**: Lexington Gays mentions HHHH as a featured event. HHHH posts say "via @lexingtongays" or "Follow @lexingtongays for more events"
+- **Cross-promote**: When a signature event is added, Lexington Gays mentions it as featured event; signature event posts say "via @lexingtongays" or "Follow @lexingtongays for more events"
 
 ## Posting Schedule
 
 - **Lexington Gays weekly carousel**: Generated Sunday evening, posted Monday morning
-- **HHHH monthly**: First announcement 3 weeks before, reminders at 1 week, 2 days, and morning-of
+- **Signature event** (when added): cadence per its frequency (monthly = 3 weeks before + 1 week + 2 days + morning-of; annual = different cadence)

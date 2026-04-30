@@ -73,13 +73,13 @@ To post a carousel to Instagram via browser:
 1. Navigate to https://www.instagram.com/
 2. Click the "+" (Create) button in the sidebar
 3. Click "Select from computer" and upload all carousel images
-4. Arrange slides in order (cover first, HHHH second, etc.)
+4. Arrange slides in order (cover first, signature event second if applicable, etc.)
 5. Click "Next" to go to filters (skip filters)
 6. Click "Next" to go to caption
 7. Paste the generated caption
 8. Click "Share" to publish
 
-Image files are at: C:\\Users\\ryan\\OneDrive\Desktop\lexingtongays\\data\\posts\\{week}\\
+Image files are at: C:/Users/willi/OneDrive/Desktop/2026Desktop/dev/lexingtongays/data/posts/{week}/
 Caption is in: {week}_post.json
 """
 
