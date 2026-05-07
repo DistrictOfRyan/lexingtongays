@@ -434,6 +434,63 @@ SOURCES = {
         "type": "community",
         "description": "Self-guided LGBTQ+ history tour from Lexington Visitors Center (215 W Main St, Suite 75). 200 years of history, rainbow crosswalks, Sweet Evening Breeze mural.",
     },
+
+    # Site discovery 2026-05-07
+    "bourbon_belonging": {
+        "name": "Bourbon & Belonging",
+        "url": "https://www.bourbonandbelonging.com/",
+        "priority": 1,
+        "type": "priority",
+        "description": "Kentucky's Queer Bourbon Week. Annual early-October multi-city event run by Queer Kentucky. Lexington's Distillery District hosts drag happy hour, queer history walks, curated bourbon tastings.",
+        "recurring": "Annual, early October",
+    },
+    "harveys_bar": {
+        "name": "Harvey's Bar",
+        "address": "200 W Main St, Lexington, KY 40507",
+        "url": "https://qlist.app/venues/Lexington/Harveys-Bar/bENRL2F4c2JMY2xsV1hpYU1uS1RXZw",
+        "priority": 2,
+        "type": "bar",
+        "description": "LGBTQ-friendly downtown cocktail bar. Listed on QLIST as a Lexington gay/queer venue. Spacious patio, dance floor, creative cocktails.",
+    },
+    "lex_public_library_pride": {
+        "name": "Lexington Public Library Pride Programming",
+        "url": "https://www.lexpublib.org/pride",
+        "events_url": "https://events.lexpublib.org/",
+        "priority": 2,
+        "type": "community",
+        "description": "LPL year-round LGBTQ programming. Pride Month Matinees (every Friday in June), LGBTQ+ Board Game Club (recurring), Pride Walking Tour, Pagan Babies Archive talks, queer history programming.",
+    },
+    "girlsgirlsgirls_burritos": {
+        "name": "girlsgirlsgirls Burritos",
+        "url": "https://girlsgirlsgirlsburritos.com/",
+        "facebook": "https://www.facebook.com/eatgggirls/",
+        "instagram": "https://www.instagram.com/girlsgirlsgirlsburritos/",
+        "address": "395 S Limestone St, Lexington, KY",
+        "priority": 2,
+        "type": "community",
+        "description": "Woman-owned, queer-aligned burrito and margarita spot near UK. Hub for LGBTQ+ fundraisers and Pride Festival benefits (e.g., art auctions). Monday Night Karaoke, Sunday Night Trivia.",
+    },
+    "lex_drag_troupe": {
+        "name": "Lexington's Drag Troupe",
+        "url": "https://www.facebook.com/p/Lexingtons-Drag-Troupe-100070019833647/",
+        "priority": 2,
+        "type": "arts",
+        "description": "Local Lexington drag collective producing recurring drag shows around the city. Active Facebook event presence.",
+    },
+    "lex_lgbt_app": {
+        "name": "Lex.LGBT Local Groups",
+        "url": "https://www.lex.lgbt/local-groups",
+        "priority": 3,
+        "type": "aggregator",
+        "description": "LGBTQ+ social/group-finding app. Lists queer hobby groups (Dyke Basketball, DnD Queers, Queer Witches, Over40+ queers, T4T Gym Buddies, Craft in the Park).",
+    },
+    "rainbow_index_lex": {
+        "name": "Rainbow Index Lexington",
+        "url": "https://rainbowindex.com/city/lexington",
+        "priority": 3,
+        "type": "aggregator",
+        "description": "LGBTQ city guide aggregator listing Lexington gay bars, venues, and events.",
+    },
 }
 
 # ── Posting Schedule ─────────────────────────────────────────────────────
@@ -503,6 +560,9 @@ LGBTQ_SOURCES = {
     "bluegrass_ucc", "uucl", "diolex", "christ_church_cathedral_lex",
     "beaumont_pcusa", "maxwell_pres", "first_pres_lex",
     "bethesda_tabernacle", "woven_church_lex",
+    # Site discovery 2026-05-07
+    "bourbon_belonging", "harveys_bar", "lex_public_library_pride",
+    "lex_drag_troupe", "lex_lgbt_app", "rainbow_index_lex",
 }
 
 # Inclusive community partners (city-specific). Events from these orgs are welcome
@@ -565,6 +625,8 @@ QUEER_FRIENDLY_VENUES = {
     'lockbox', '21c museum', '21c hotel',
     'bar ona',
     'lexington lesbian coffee',
+    "harvey's bar", 'harveys bar',
+    'girlsgirlsgirls', 'girlsgirlsgirls burritos', 'eatgggirls',
 }
 
 # Source keys that are LGBTQ-community-organized. Events from these sources matching
