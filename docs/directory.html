@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LGBTQ+ Friendly Business Directory - Lexington, KY | Lexington Gays</title>
     <meta name="description" content="The most comprehensive directory of LGBTQ+ owned and friendly businesses in Lexington, KY. Bars, restaurants, coffee shops, tattoo studios, affirming churches, health providers, and more — searchable and filterable.">
-    <meta name="keywords" content="Lexington LGBTQ businesses, Lexington gay friendly, queer owned Lexington, LGBTQ directory Oklahoma, Lexington gay bars, Lexington queer community, gay friendly restaurants Lexington, LGBTQ affirming Lexington">
+    <meta name="keywords" content="Lexington LGBTQ businesses, Lexington gay friendly, queer owned Lexington, LGBTQ directory Kentucky, Lexington gay bars, Lexington queer community, gay friendly restaurants Lexington, LGBTQ affirming Lexington">
     <meta name="robots" content="index, follow">
     <meta property="og:title" content="LGBTQ+ Friendly Business Directory - Lexington | Lexington Gays">
     <meta property="og:description" content="The most comprehensive directory of LGBTQ+ owned and friendly businesses in Lexington, KY. 80+ businesses across 13 categories.">
@@ -33,14 +33,48 @@
       gtag('config', 'G-ZX58T718JZ');
     </script>
 
-    <!-- Schema.org: Local Business Directory -->
+    <!-- Schema.org: Organization -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": "LGBTQ+ Friendly Businesses in Lexington, KY",
-      "description": "A curated directory of LGBTQ+ owned and affirming businesses in Lexington, KY.",
-      "url": "https://www.lexingtongays.com/directory.html"
+      "@type": "Organization",
+      "name": "Lexington Gays",
+      "description": "Free weekly LGBTQ+ event guide and community directory for Lexington, Kentucky.",
+      "url": "https://www.lexingtongays.com",
+      "logo": "https://www.lexingtongays.com/favicon-512.png",
+      "areaServed": {
+        "@type": "City",
+        "name": "Lexington",
+        "containedInPlace": {
+          "@type": "State",
+          "name": "Kentucky"
+        }
+      },
+      "sameAs": [
+        "https://instagram.com/lexingtongays",
+        "https://linktr.ee/lexingtongays"
+      ]
+    }
+    </script>
+
+    <!-- Schema.org: CollectionPage + ItemList for the directory -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "LGBTQ+ Friendly Business Directory in Lexington, KY",
+      "description": "A curated directory of LGBTQ+ owned and affirming businesses in Lexington, Kentucky.",
+      "url": "https://www.lexingtongays.com/directory.html",
+      "isPartOf": {
+        "@type": "WebSite",
+        "name": "Lexington Gays",
+        "url": "https://www.lexingtongays.com"
+      },
+      "mainEntity": {
+        "@type": "ItemList",
+        "name": "LGBTQ+ Friendly Businesses in Lexington, KY",
+        "description": "Curated directory of LGBTQ+ owned and affirming businesses in Lexington, Kentucky. Listings added weekly."
+      }
     }
     </script>
 
