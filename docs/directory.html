@@ -403,21 +403,589 @@
 
     <!-- Main Content -->
     <main class="container">
-        <div style="text-align:center;padding:3rem 1rem;max-width:650px;margin:0 auto;">
-            <h2 style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:1rem;">Directory in progress</h2>
-            <p style="color:var(--text-secondary);line-height:1.7;">Lexington Gays just launched. The directory is being built from scratch with verified LGBTQ+ owned and friendly businesses in Lexington, KY. Check back in 2-4 weeks, or <a href="submit.html" style="color:var(--peacock);">submit your business</a> to be added.</p>
-
-            <h3 style="font-family:'Cinzel',serif;color:var(--gold);margin-top:3rem;margin-bottom:1rem;font-size:1.1rem;letter-spacing:1.5px;text-transform:uppercase;">In the meantime, read the guides</h3>
-            <ul style="list-style:none;padding:0;text-align:left;color:var(--text-secondary);line-height:2;">
-                <li>&middot; <a href="blog/gay-lexington-travel-guide.html" style="color:var(--peacock);">The Gay Lexington Travel Guide</a></li>
-                <li>&middot; <a href="blog/gay-bars-lexington.html" style="color:var(--peacock);">Every Gay Bar in Lexington (and What Each One Is For)</a></li>
-                <li>&middot; <a href="blog/lexington-vs-louisville-gay-scene.html" style="color:var(--peacock);">Lexington vs Louisville: The Gay Scene Compared</a></li>
-                <li>&middot; <a href="blog/date-night-queer-lexington.html" style="color:var(--peacock);">Queer Date Night in Lexington</a></li>
-                <li>&middot; <a href="blog/new-to-lexington-queer-starter-pack.html" style="color:var(--peacock);">New to Lexington: The Queer Starter Pack</a></li>
-                <li>&middot; <a href="blog/lgbtq-sports-lexington.html" style="color:var(--peacock);">LGBTQ+ Sports & Recreation in Lexington</a></li>
-            </ul>
-            <p style="color:var(--text-secondary);margin-top:2rem;"><a href="index.html" style="color:var(--peacock);">See this week's queer events &rarr;</a></p>
+        <div class="week-header">
+            <h1>LGBTQ+ Directory</h1>
+            <p class="date-range">Lexington's Queer-Owned &amp; Queer-Friendly Businesses</p>
         </div>
+
+        <div class="directory-intro">
+            <p>The most comprehensive list of LGBTQ+ owned and affirming businesses, bars, churches, and community resources in Lexington, Kentucky. Whether you want a drag brunch, an affirming therapist, a church without the side-eye, or just a good cup of coffee, this is your list.</p>
+            <p>New to town or visiting? Start with our <a href="blog/gay-lexington-travel-guide.html">gay Lexington travel guide</a> or the <a href="blog/new-to-lexington-queer-starter-pack.html">queer starter pack</a> before you dig into the businesses below.</p>
+        </div>
+
+        <!-- ══ SUBMIT A BUSINESS ════════════════════════════════════════════ -->
+        <!--
+            SETUP REQUIRED: This form uses Formspree (formspree.io).
+            Replace the action URL below with your Formspree endpoint once configured.
+            Until then, the form shows a graceful fallback pointing to Instagram.
+        -->
+        <section class="submit-section" id="submit-business">
+            <h2>Add Your Business</h2>
+            <p class="submit-tagline">
+                Know a bar, brunch spot, therapist, tattoo artist, or affirming church that deserves their flowers?
+                Drop them here. We check every submission and add legit businesses within a week.
+            </p>
+
+            <form class="submit-form" id="bizSubmitForm" action="https://formspree.io/f/REPLACE_WITH_YOUR_ID" method="POST">
+                <input type="text" name="business_name" placeholder="Business Name *" required>
+                <select name="category" required>
+                    <option value="" disabled selected>Category *</option>
+                    <option value="Community Hubs">Community Hubs</option>
+                    <option value="Bars & Nightlife">Bars &amp; Nightlife</option>
+                    <option value="Drag Shows & Brunch">Drag Shows &amp; Brunch</option>
+                    <option value="Coffee & Food">Coffee &amp; Food</option>
+                    <option value="Breweries & Meaderies">Breweries &amp; Meaderies</option>
+                    <option value="Arts, Chorus & Culture">Arts, Chorus &amp; Culture</option>
+                    <option value="Sports & Recreation">Sports &amp; Recreation</option>
+                    <option value="Affirming Churches">Affirming Churches</option>
+                    <option value="Health & Wellness">Health &amp; Wellness</option>
+                    <option value="Support & Community Groups">Support &amp; Community Groups</option>
+                    <option value="Shopping & Services">Shopping &amp; Services</option>
+                    <option value="Advocacy & Legal">Advocacy &amp; Legal</option>
+                    <option value="Other">Other</option>
+                </select>
+                <input type="text" name="address" placeholder="Address (optional)">
+                <input type="url" name="website" placeholder="Website or Instagram URL">
+                <textarea name="description" class="full-width" placeholder="Why should they be on this list? LGBTQ+ owned, affirming staff, Pride-friendly, all of the above? Tell us. *" required></textarea>
+                <input type="text" name="your_name" placeholder="Your name (optional)">
+                <input type="email" name="your_email" placeholder="Your email (optional, for follow-up)">
+                <div class="full-width" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                    <button type="submit" class="submit-btn" id="submitBtn">Submit Business</button>
+                    <span class="form-status" id="formStatus"></span>
+                </div>
+                <!-- Honeypot field - do not remove, catches spam -->
+                <input type="text" name="_gotcha" style="display:none">
+            </form>
+        </section>
+
+        <!-- ══ SEARCH & FILTER ═════════════════════════════════════════════ -->
+        <div class="dir-controls" id="dirControls">
+            <div class="dir-search-wrap">
+                <span class="search-icon">&#128269;</span>
+                <input type="search" class="dir-search" id="dirSearch" placeholder="Search businesses, categories, descriptions..." autocomplete="off">
+                <button class="dir-search-clear" id="searchClear" aria-label="Clear search">&times;</button>
+            </div>
+            <div class="filter-scroll" id="filterBar">
+                <button class="filter-btn active" data-cat="all">All</button>
+                <button class="filter-btn" data-cat="community-hubs">Community Hubs</button>
+                <button class="filter-btn" data-cat="bars-nightlife">Bars &amp; Nightlife</button>
+                <button class="filter-btn" data-cat="drag">Drag</button>
+                <button class="filter-btn" data-cat="coffee-food">Coffee &amp; Food</button>
+                <button class="filter-btn" data-cat="breweries">Breweries</button>
+                <button class="filter-btn" data-cat="arts-culture">Arts &amp; Culture</button>
+                <button class="filter-btn" data-cat="sports-fitness">Sports</button>
+                <button class="filter-btn" data-cat="churches">Churches</button>
+                <button class="filter-btn" data-cat="health-wellness">Health</button>
+                <button class="filter-btn" data-cat="support-groups">Support Groups</button>
+                <button class="filter-btn" data-cat="shopping-services">Shopping &amp; Services</button>
+                <button class="filter-btn" data-cat="advocacy-legal">Advocacy &amp; Legal</button>
+            </div>
+        </div>
+
+        <div class="results-count" id="resultsCount"></div>
+        <div class="no-results" id="noResults">
+            <p>We searched every corner of the Bluegrass.</p>
+            <p>Nothing matched that search. Know a business that should be here? <a href="#submit-business">Submit it above.</a></p>
+        </div>
+
+        <!-- ══ CATEGORY SECTIONS ════════════════════════════════════════════ -->
+
+        <!-- 1. Community Hubs -->
+        <div class="category-section" data-cat="community-hubs">
+            <h2 class="category-title">LGBTQ+ Community Hubs</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.lexpridecenter.org/" target="_blank" rel="noopener">Lexington Pride Center (PCSO)</a> <span class="biz-badge">Anchor</span></div>
+                <div class="biz-address">389 Waller Avenue, Suite 100</div>
+                <div class="biz-desc">Kentucky's oldest LGBTQ+ organization, founded in 1977 (formerly GLSO). The community center runs a free monthly food bank, victim advocacy, support groups, a library, and education programs, and produces the Lexington Pride Festival. If you are new here, start here.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.lexpridefest.org/" target="_blank" rel="noopener">Lexington Pride Festival</a></div>
+                <div class="biz-address">Oliver Lewis Way &middot; Saturday, May 30, 2026</div>
+                <div class="biz-desc">Lexington's annual Pride marquee, drawing around 50,000 people to 200+ booths. The 2026 festival moved to May 30 and grew its sponsor roster by roughly half over the prior year.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.uky.edu/lgbtq/Events" target="_blank" rel="noopener">UK Office of LGBTQ* Resources</a></div>
+                <div class="biz-address">Gatton Student Center, UK campus</div>
+                <div class="biz-desc">The University of Kentucky's LGBTQ+ office runs a public calendar of events, from Pride Month programming to Trans Week of Awareness. Much of it is open to the wider community, not just students.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.pflagcentralky.org/" target="_blank" rel="noopener">PFLAG Central Kentucky</a></div>
+                <div class="biz-desc">The local PFLAG chapter offering support and advocacy for LGBTQIA+ people and the families who love them.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.fairness.org/" target="_blank" rel="noopener">The Fairness Campaign</a></div>
+                <div class="biz-desc">Kentucky's LGBTQ advocacy organization since 1991. They lobby in Frankfort and helped pass Lexington's 1999 Fairness Ordinance, the first in the state. Their newsletter is a reliable feed of statewide queer events.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://queerkentucky.com/" target="_blank" rel="noopener">Queer Kentucky</a></div>
+                <div class="biz-desc">Kentucky's only LGBTQ+ newsroom. Coverage of community, venues, and events across the state, with deep reporting on Lexington's queer scene.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/TransKentucky/" target="_blank" rel="noopener">TransKentucky</a></div>
+                <div class="biz-desc">Trans support, social, and resource group serving Lexington and the whole state. Meets the first Saturday of each month at 7:30pm.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://imperialcourtkentucky.org/" target="_blank" rel="noopener">Imperial Court of Kentucky</a></div>
+                <div class="biz-desc">A 501(c)(3) drag charity organization. Year-round fundraising and community drag programming, anchored by an annual Coronation event.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Faulkner Morgan Archive</div>
+                <div class="biz-desc">An LGBTQ+ history archive preserving two centuries of Lexington and Kentucky queer history. They operate the Pride of Place self-guided history tour.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://kentuckyblackpride.com/" target="_blank" rel="noopener">Kentucky Black Pride</a></div>
+                <div class="biz-desc">An annual celebration plus ongoing programming for Kentucky's QTPOC community.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/BluegrassBlackPride/" target="_blank" rel="noopener">Bluegrass Black Pride</a></div>
+                <div class="biz-desc">An African-American LGBTQ nonprofit advocating for equity across the Bluegrass region.</div>
+            </div>
+        </div>
+
+        <!-- 2. Bars & Nightlife -->
+        <div class="category-section" data-cat="bars-nightlife">
+            <h2 class="category-title">Bars &amp; Nightlife</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.instagram.com/the.bar.complex/" target="_blank" rel="noopener">The Bar Complex</a> <span class="biz-badge">Flagship</span></div>
+                <div class="biz-address">224 East Main St</div>
+                <div class="biz-desc">Kentucky's oldest gay bar, open since 1980 and one of the oldest in the country. Multiple rooms, a dance floor modeled on Studio 54, and drag shows Thursday through Saturday. 21+.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/CrossingsLexington" target="_blank" rel="noopener">Crossings Lexington</a></div>
+                <div class="biz-address">117 N Limestone St</div>
+                <div class="biz-desc">An LGBTQ+ dive that started as a leather bar in the 1980s and is now a favorite watering hole for Lexington's diverse queer community. Go-go boys, drag queens, and a packed event calendar. Open daily until 2:30am.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Bar Ona</div>
+                <div class="biz-desc">A downtown cocktail bar named one of the best in the nation by Esquire, with a strong drinks program and a reliably queer-friendly crowd.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Old North Bar</div>
+                <div class="biz-desc">A queer-friendly neighborhood bar, a Lexington Pride Festival RAINBOW-level sponsor, and a Pride Restaurant Week participant supporting the Lexington Pride Center.</div>
+            </div>
+        </div>
+
+        <!-- 3. Drag Shows & Brunch -->
+        <div class="category-section" data-cat="drag">
+            <h2 class="category-title">Drag Shows &amp; Brunch</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name">Epping's on Eastside (Poppy &amp; Olive)</div>
+                <div class="biz-desc">Queer-friendly upscale dining with regular drag brunch. House-cured meats and a menu built on the region's diverse farming community.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Lockbox at 21c Museum Hotel</div>
+                <div class="biz-desc">The restaurant inside Lexington's 21c art hotel, with a revolving local-food menu and recurring drag brunch programming.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Diva Royale Lexington</div>
+                <div class="biz-desc">Drag dinner shows on Friday and Saturday and Sunday brunch shows, heavy on female celebrity impersonations.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Illusions Drag Queen Brunch</div>
+                <div class="biz-desc">A brunch-and-cabaret format with RuPaul-style queens.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">The Drag Queen Party Bus</div>
+                <div class="biz-desc">A drag show on wheels, built for bachelorette parties and private events.</div>
+            </div>
+        </div>
+
+        <!-- 4. Coffee & Food -->
+        <div class="category-section" data-cat="coffee-food">
+            <h2 class="category-title">Coffee &amp; Food</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://queerkentucky.com/lussi-brown-coffee-bar-serving-a-safe-unapologetic-space-for-lexington-queers/" target="_blank" rel="noopener">Lussi Brown Coffee Bar</a></div>
+                <div class="biz-desc">A queer-owned, woman-owned artisanal coffee shop and bar, open since 2017 and voted Best of Lex in 2024. Seasonal specials by day, afternoon cocktails after.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Third Street Stuff and Coffee</div>
+                <div class="biz-desc">A funky, beloved LGBTQ+ owned cafe. Fair Trade Certified Organic coffee, locally baked goods, and sandwiches in a space that has been a community fixture for years.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://girlsgirlsgirlsburritos.com/" target="_blank" rel="noopener">girlsgirlsgirls Burritos</a></div>
+                <div class="biz-address">395 S Limestone St</div>
+                <div class="biz-desc">LGBTQ+ owned and woman-owned since 2016, and a hub for queer fundraisers and community events. Voted Best Vegan &amp; Vegetarian Restaurant by the Herald-Leader, with live music, a patio, and happy hour.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/kynativecafe/" target="_blank" rel="noopener">Kentucky Native Cafe</a></div>
+                <div class="biz-address">417 E Maxwell St</div>
+                <div class="biz-desc">An outdoor cafe set in the 120-year-old Michler's Greenhouse, frequented by Lexington's queer community. Local craft beer, wine, Bavarian pretzels, cheese plates, and gelato.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://samshotdogs.com/" target="_blank" rel="noopener">Sam's Hot Dog Stand</a></div>
+                <div class="biz-desc">A queer-owned hot dog stand, named in Queer Kentucky's roundup of queer businesses to support in Lexington.</div>
+            </div>
+        </div>
+
+        <!-- 5. Breweries & Meaderies -->
+        <div class="category-section" data-cat="breweries">
+            <h2 class="category-title">Breweries &amp; Meaderies</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.westsixth.com/" target="_blank" rel="noopener">West Sixth Brewing</a></div>
+                <div class="biz-desc">A Lexington brewery and Pride sponsor since 2014. They brew "Pride, Y'all" with proceeds going to local Pride organizations, and serve as the exclusive beer vendor at the Lexington Pride Festival.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://beeserkermeadery.com/home" target="_blank" rel="noopener">Beeserker Meadery</a></div>
+                <div class="biz-address">Paris, KY (Bourbon County)</div>
+                <div class="biz-desc">A small farm meadery just northeast of Lexington, open since 2025 and a Lexington Pride Festival sponsor.</div>
+            </div>
+        </div>
+
+        <!-- 6. Arts, Chorus & Culture -->
+        <div class="category-section" data-cat="arts-culture">
+            <h2 class="category-title">Arts, Chorus &amp; Culture</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/NewSongInTheBluegrass" target="_blank" rel="noopener">New Song in the Bluegrass</a></div>
+                <div class="biz-desc">A community chorus for LGBT and LGBT-friendly singers in Lexington.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://sistersound.org" target="_blank" rel="noopener">Sister Sound</a></div>
+                <div class="biz-desc">Lexington's community choir for women, LGBTQAI+ affirming.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://kentuckybourbonbears.com" target="_blank" rel="noopener">Kentucky Bourbon Bears</a></div>
+                <div class="biz-desc">A social organization for bears and all LGBTQ+ community members across Kentucky.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://kyfriedsisters.org" target="_blank" rel="noopener">Kentucky Fried Sisters</a></div>
+                <div class="biz-desc">Lexington's order of genderqueer clown nuns, doing community fundraising and queer visibility with equal parts glitter and grit.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Lexington's Last WednesGays</div>
+                <div class="biz-address">Last Wednesday monthly</div>
+                <div class="biz-desc">A recurring queer community social held on the last Wednesday of the month. One of the closest things Lexington has to a standing monthly tentpole.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Lexington Queer Craft Club</div>
+                <div class="biz-desc">A monthly queer craft meetup, from junk journaling to fan-making. Check Eventbrite for the next session.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Living Arts &amp; Science Center</div>
+                <div class="biz-desc">A Lexington arts and science nonprofit and a Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Pride of Place Tour</div>
+                <div class="biz-address">Pickup: Lexington Visitors Center, 215 W Main St, Suite 75</div>
+                <div class="biz-desc">A self-guided LGBTQ+ history tour covering 200 years of local history, rainbow crosswalks, and the three-story mural honoring Sweet Evening Breeze.</div>
+            </div>
+        </div>
+
+        <!-- 7. Sports & Recreation -->
+        <div class="category-section" data-cat="sports-fitness">
+            <h2 class="category-title">Sports &amp; Recreation</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://hotmesssports.com/" target="_blank" rel="noopener">HotMess Sports Lexington</a></div>
+                <div class="biz-desc">The Lexington branch of HotMess: kickball in spring and fall, beach volleyball in summer, dodgeball and bowling in winter, plus cornhole. Founded in 2021 and growing fast.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://theleaguelex.com/" target="_blank" rel="noopener">The League Lexington</a></div>
+                <div class="biz-desc">An LGBTQ+ recreational sports league for the Lexington area.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.usgsn.com/lexington" target="_blank" rel="noopener">USGSN Lexington</a></div>
+                <div class="biz-desc">The US Gay Sports Network's Lexington city page, connecting players to local LGBTQ+ sports.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://frontrunnerslex.com" target="_blank" rel="noopener">Frontrunners Lexington</a></div>
+                <div class="biz-desc">A queer runners and walkers group with twice-weekly meetups. All paces welcome.</div>
+            </div>
+        </div>
+
+        <!-- 8. Affirming Churches -->
+        <div class="category-section" data-cat="churches">
+            <h2 class="category-title">Affirming Churches</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://bluegrasschurch.org" target="_blank" rel="noopener">Bluegrass United Church of Christ</a></div>
+                <div class="biz-desc">An Open and Affirming UCC congregation.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.uucl.org/" target="_blank" rel="noopener">Unitarian Universalist Church of Lexington</a></div>
+                <div class="biz-desc">A UU Welcoming Congregation, affirming LGBTQ+ people in full.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://ccclex.org" target="_blank" rel="noopener">Christ Church Cathedral</a></div>
+                <div class="biz-desc">An affirming Episcopal cathedral downtown that also offers emergency assistance.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Beaumont Presbyterian Church</div>
+                <div class="biz-desc">A More Light Presbyterian congregation, meaning full LGBTQIA+ inclusion in worship, ministry, and leadership.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://maxpres.org" target="_blank" rel="noopener">Maxwell Street Presbyterian Church</a></div>
+                <div class="biz-address">180 E. Maxwell Street</div>
+                <div class="biz-desc">Listed in the Bluegrass Rainbow Faith Communities directory, with rent and utility assistance for the community.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">St. Luke United Methodist Church</div>
+                <div class="biz-desc">A Methodist congregation that hosts a God's Pantry location and offers Spanish-language services.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Bethesda Tabernacle</div>
+                <div class="biz-desc">An affirming Pentecostal congregation started by a gay couple. Proof that affirming and Pentecostal can live in the same sentence.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.wovenchurchlex.com/" target="_blank" rel="noopener">Woven Church Lex</a></div>
+                <div class="biz-desc">An independent affirming church community.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.woodlandchristian.org" target="_blank" rel="noopener">Woodland Christian Church</a></div>
+                <div class="biz-desc">An affirming faith community listed on the Lexington Pride Center resource list.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Catholic LGBTQ+ Ministries Lexington</div>
+                <div class="biz-desc">A Lexington Catholic LGBTQ+ ministry network and a Lexington Pride Festival sponsor.</div>
+            </div>
+        </div>
+
+        <!-- 9. Health & Wellness -->
+        <div class="category-section" data-cat="health-wellness">
+            <h2 class="category-title">Health &amp; Wellness</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://avolky.org" target="_blank" rel="noopener">AIDS Volunteers of Lexington (AVOL)</a></div>
+                <div class="biz-address">1824 Hill Rise Drive, Suite 100</div>
+                <div class="biz-desc">Housing, HIV testing, and supportive services for more than 400 low-income people living with HIV/AIDS in the Lexington area.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://kentuckyhealthjusticenetwork.org" target="_blank" rel="noopener">Kentucky Health Justice Network</a></div>
+                <div class="biz-desc">Advocacy, navigation, and financial assistance for trans health care and abortion care across Kentucky.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://greenhouse17.org" target="_blank" rel="noopener">Greenhouse17</a></div>
+                <div class="biz-desc">Intimate-partner-violence advocacy and shelter for the Bluegrass region, set on a 40-acre farm. A Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">New Vista</div>
+                <div class="biz-desc">Mental health and substance use services, including a drop-in center and a 24-hour helpline (1-800-928-8000). A Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://ampersandky.org" target="_blank" rel="noopener">Ampersand Sexual Violence Resource Center</a></div>
+                <div class="biz-address">2025 Regency Rd</div>
+                <div class="biz-desc">Sexual assault support and advocacy for Central Kentucky.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Rainbow Closet</div>
+                <div class="biz-desc">A free gender-affirming clothing bank for Lexington's LGBTQ+ community, run through Open Doors Counseling. Call 859-212-9444.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://opendoorscounselingctr.com" target="_blank" rel="noopener">Open Doors Counseling Center</a></div>
+                <div class="biz-desc">LGBTQ+ affirming mental health counseling, and the home of the Rainbow Closet clothing bank.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.heartlandhealingcounseling.com" target="_blank" rel="noopener">Heartland Healing Counseling &amp; Consultation</a></div>
+                <div class="biz-desc">Affirming therapy and wellness services, listed on the Lexington Pride Center provider directory.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.solacetherapeutic.com" target="_blank" rel="noopener">Solace Therapeutic</a></div>
+                <div class="biz-desc">Affirming psychology practice led by psychologist Angela Aaron.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.claritylex.com" target="_blank" rel="noopener">Clarity Counseling Services</a></div>
+                <div class="biz-desc">LGBTQAI+ affirming therapy in Lexington.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.griffin-lyons.com" target="_blank" rel="noopener">Griffin-Lyons Counseling</a></div>
+                <div class="biz-desc">Therapy practice listed among the Lexington Pride Center's affirming providers.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://thenestlexington.org" target="_blank" rel="noopener">The Nest</a></div>
+                <div class="biz-address">529 N Martin Luther King Blvd</div>
+                <div class="biz-desc">Intimate-partner-violence support and childcare, on the Lexington Pride Center resource list.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://recoverycafelexington.org" target="_blank" rel="noopener">Recovery Cafe Lexington</a></div>
+                <div class="biz-desc">Recovery services and community, listed by the Lexington Pride Center.</div>
+            </div>
+        </div>
+
+        <!-- 10. Support & Community Groups -->
+        <div class="category-section" data-cat="support-groups">
+            <h2 class="category-title">Support &amp; Community Groups</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/LexingtonGSA/" target="_blank" rel="noopener">Lexington GSA for Youth</a></div>
+                <div class="biz-desc">A youth gender and sexuality alliance operating as part of the Lexington Pride Center.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/groups/803502783114842" target="_blank" rel="noopener">TransLex</a></div>
+                <div class="biz-desc">A Facebook community space inclusive to anyone on the gender spectrum.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/groups/474570139416422" target="_blank" rel="noopener">Trans Parent Lex</a></div>
+                <div class="biz-desc">A support group for trans parents and parents of trans kids.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">LGBTQ+ Community of Lexington</div>
+                <div class="biz-desc">A general-purpose Facebook group for Lexington's queer community. Search "LGBTQ+ Community of Lexington" on Facebook.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/LLcoffeehouse/" target="_blank" rel="noopener">Lexington Lesbian Coffee House</a></div>
+                <div class="biz-desc">A recurring community social for Lexington's lesbian community.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.facebook.com/profile.php?id=100090357336048" target="_blank" rel="noopener">Kentucky Embraces You</a></div>
+                <div class="biz-desc">A support and allies group for Kentucky's LGBTQ+ community, listed by the Lexington Pride Center.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.arborky.org" target="_blank" rel="noopener">Arbor Youth Services</a></div>
+                <div class="biz-address">536 West Third Street</div>
+                <div class="biz-desc">A youth emergency shelter on the Lexington Pride Center resource list, serving young people including LGBTQ+ youth.</div>
+            </div>
+        </div>
+
+        <!-- 11. Shopping & Services -->
+        <div class="category-section" data-cat="shopping-services">
+            <h2 class="category-title">Shopping &amp; Services</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.customlogoware.com/" target="_blank" rel="noopener">Custom LogoWare</a> <span class="biz-badge">LGBTQ-Owned</span></div>
+                <div class="biz-desc">Custom apparel and promotional products since 2002, and the first NGLCC-certified LGBTQ-owned business in Lexington. Owned by Jesse Caylor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">The Manchester</div>
+                <div class="biz-desc">A boutique Lexington hotel and a Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Battle Axes Lexington</div>
+                <div class="biz-desc">A queer-friendly axe-throwing venue and a Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">CannaBuzz</div>
+                <div class="biz-desc">A queer-friendly cannabis and CBD retailer, and a Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Commonwealth Smiles</div>
+                <div class="biz-desc">A queer-friendly dental practice and a Lexington Pride Festival sponsor.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name">Debra Hensley State Farm</div>
+                <div class="biz-desc">A State Farm insurance agent and a Lexington Pride Festival sponsor.</div>
+            </div>
+        </div>
+
+        <!-- 12. Advocacy & Legal -->
+        <div class="category-section" data-cat="advocacy-legal">
+            <h2 class="category-title">Advocacy &amp; Legal</h2>
+            <hr class="category-divider">
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://lexhumanrights.org" target="_blank" rel="noopener">Lexington Human Rights Commission</a></div>
+                <div class="biz-desc">The city body that investigates discrimination complaints, including those based on sexual orientation and gender identity.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.lexingtonky.gov/lexproud" target="_blank" rel="noopener">Be LexProud!</a></div>
+                <div class="biz-desc">The City of Lexington's LGBTQ+ initiative, including the Pride flag program along Main Street.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://aclu-ky.org" target="_blank" rel="noopener">ACLU of Kentucky</a></div>
+                <div class="biz-desc">Civil rights litigation and advocacy across Kentucky, including LGBTQ+ rights cases.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://elopllc.com" target="_blank" rel="noopener">Elston Law Office, PLLC</a></div>
+                <div class="biz-address">820 Tremont Ave</div>
+                <div class="biz-desc">An LGBT law practice listed by the Lexington Pride Center.</div>
+            </div>
+
+            <div class="biz-card">
+                <div class="biz-name"><a href="https://www.micahlegal.org" target="_blank" rel="noopener">Micah Legal</a></div>
+                <div class="biz-address">219 E Short Street, 2nd Floor</div>
+                <div class="biz-desc">Sliding-scale civil law, on the Lexington Pride Center's affirming provider list.</div>
+            </div>
+        </div>
+
+        <!-- Sources -->
+        <div class="directory-sources">
+            <p>Sources: <a href="https://www.lexpridecenter.org/community-resource-list" target="_blank" rel="noopener">Lexington Pride Center Community Resource List</a>, <a href="https://queerkentucky.com/" target="_blank" rel="noopener">Queer Kentucky</a>, <a href="https://www.visitlex.com/guides/post/lgbtq/" target="_blank" rel="noopener">VisitLEX LGBTQ Guide</a>, <a href="https://www.civitaslgbtq.org/" target="_blank" rel="noopener">Civitas LGBTQ+ Chamber of Commerce</a>, Lexington Pride Festival sponsor research, and submissions from readers like you.</p>
+            <p style="margin-top:0.5rem;">In crisis? The <strong>988 Suicide &amp; Crisis Lifeline</strong> (call or text 988), the <strong>Trevor Project</strong> for LGBTQ+ youth, and <strong>Trans Lifeline</strong> are all there 24/7.</p>
+            <p style="margin-top:0.5rem;">Last updated: May 2026. Got a business to add? <a href="#submit-business">Submit it above.</a></p>
+        </div>
+
     </main>
 
     <!-- Footer -->
