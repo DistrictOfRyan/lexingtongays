@@ -55,31 +55,28 @@ SEARCH_URLS = [
 
 # ── Known LGBTQ+ venue & org Facebook page event tabs ─────────────────────────
 PAGE_URLS = [
+    # REAL Lexington LGBTQ+ pages (verified 2026-06-19). The prior list was
+    # fabricated: the May scaffold blindly substituted Tulsa venue handles into
+    # nonexistent "Lexington" pages (TheLexingtonEagle, clubmajesticlexington,
+    # YBRLexington, CouncilOakMensChorus, etc. - none exist). Lexington's real
+    # gay scene is small: 2 bars (Crossings + The Bar Complex) plus the Pride
+    # org. The Bar Complex has no confirmable FB page (IG @thebarcomplex only),
+    # so it is covered via instagram_orgs, not here.
     # Bars & nightlife
-    "https://www.facebook.com/TheLexingtonEagle/events",
-    "https://www.facebook.com/YBRLexington/events",
-    "https://www.facebook.com/clubmajesticlexington/events",
-    "https://www.facebook.com/dvllexington/events",
-    # Arts & culture
-    "https://www.facebook.com/TwistedArtsLexington/events",
-    "https://www.facebook.com/queerlitcollective/events",
-    "https://www.facebook.com/CouncilOakMensChorus/events",
-    # Community orgs
-    "https://www.facebook.com/allnations2S/events",          # All Nations Two-Spirit Society
-    "https://www.facebook.com/lexingtonlambdaleague/events",     # Lambda Bowling
-    "https://www.facebook.com/queerwomenscollectivelexington/events",
-    "https://www.facebook.com/p/Urban-Lgbt-Lexington-inc-100085937172262/events",
-    "https://www.facebook.com/people/Lexington-House-of-Drag/61557097803540/events",
+    "https://www.facebook.com/CrossingsLexington/events",        # Crossings - Lexington's LGBTQ+ dive bar (9.3k likes, verified)
+    # Community orgs / Pride
+    "https://www.facebook.com/LexPrideCenter/events",            # Lexington Pride Center (6.9k likes, verified, 389 Waller Ave)
+    "https://www.facebook.com/LexingtonPrideFestival/events",    # Lexington Pride Festival / Lexington Gay Services Org (16.3k likes, verified)
 ]
 
 # ── Lexington LGBTQ+ Facebook group event tabs ─────────────────────────────────────
 GROUP_URLS = [
     # LGBTQ-specific groups
     "https://www.facebook.com/groups/161646500587551/events",          # Gay Men of Lexington (1.3K)
-    "https://www.facebook.com/groups/2612250565491228/events",         # Okie Gays (6K)
-    "https://www.facebook.com/groups/715281449025002/events",          # Lexington LGBTQ+ Scene (2.8K)
-    "https://www.facebook.com/groups/472710852857064/events",          # LGBTQ Hot List
-    "https://www.facebook.com/groups/220878821301627/events",          # LGBT Nightlife Lexington
+    # Okie Gays + group 220878821301627 REMOVED 2026-06-19: both are Oklahoma/Tulsa
+    # groups (numeric IDs copied from TulsaGays; "Okie"=Oklahoma) mislabeled Lexington.
+    "https://www.facebook.com/groups/715281449025002/events",          # Lexington LGBTQ+ Scene (2.8K) - verify ID is Lexington
+    "https://www.facebook.com/groups/472710852857064/events",          # LGBTQ Hot List - verify ID is Lexington
     # General Lexington community / entertainment groups — goldmines for local events
     "https://www.facebook.com/groups/InterestingThingsToDoInLexington/events",  # Interesting Things To Do In Lexington (72K)
     "https://www.facebook.com/groups/funstufftodoinlexington/events",      # Fun Stuff to Do in Lexington!

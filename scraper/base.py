@@ -1,6 +1,7 @@
-"""Base scraper class with common functionality for all Lexington Gays scrapers."""
+"""Base scraper class with common functionality for all Tulsa Gays scrapers."""
 
 import random
+import re
 import time
 import logging
 from datetime import datetime
@@ -37,7 +38,13 @@ class BaseScraper:
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            # Only advertise encodings we can actually decode. No Brotli decoder
+            # (brotli/brotlicffi) is installed, so requesting "br" causes any
+            # Brotli-serving site to return undecodable bytes -> the scraper
+            # parses garbage and silently yields 0 events (e.g. qlist served a
+            # 29KB blob instead of the real 191KB page). gzip/deflate are always
+            # decodable by requests' bundled support.
+            "Accept-Encoding": "gzip, deflate",
         })
 
     def _random_delay(self):
@@ -94,6 +101,73 @@ class BaseScraper:
             "source": self.source_name,
         }
 
+    def _extract_json_ld_from_soup(self, soup, venue_default: str = "",
+                                   priority: int = 2) -> List[Dict]:
+        """Extract schema.org Event items from JSON-LD <script> blocks.
+
+        Shared helper so every scraper (ticketing, venues, etc.) can pull
+        structured event data. Handles bare arrays, single objects, and
+        @graph wrappers. Returns a list of standardized event dicts."""
+        import json as _json
+        events: List[Dict] = []
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                raw = script.string or script.get_text() or ""
+                if not raw.strip():
+                    continue
+                data = _json.loads(raw)
+            except Exception:
+                continue
+            # Flatten arrays and @graph wrappers into a list of candidate items.
+            if isinstance(data, list):
+                items = list(data)
+            elif isinstance(data, dict) and isinstance(data.get("@graph"), list):
+                items = list(data["@graph"])
+            else:
+                items = [data]
+            # Some pages nest the real Event list under a container node's
+            # mainEntity / itemListElement (e.g. a WebPage or ItemList wrapper).
+            # Pull those nested events up so they aren't silently dropped.
+            for node in list(items):
+                if not isinstance(node, dict):
+                    continue
+                for key in ("mainEntity", "itemListElement"):
+                    nested = node.get(key)
+                    if isinstance(nested, list):
+                        items.extend(n for n in nested if isinstance(n, dict))
+                    elif isinstance(nested, dict):
+                        items.append(nested)
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                # itemListElement often wraps the event in a ListItem.item
+                if "Event" not in str(item.get("@type", "")) and isinstance(item.get("item"), dict):
+                    item = item["item"]
+                itype = item.get("@type", "")
+                if isinstance(itype, list):
+                    itype = next((t for t in itype if "Event" in str(t)), "")
+                if "Event" not in str(itype):
+                    continue
+                name = (item.get("name") or "").strip()
+                if not name:
+                    continue
+                start = item.get("startDate", "") or ""
+                date_str = start[:10] if start else ""
+                time_str = start.split("T")[1][:5] if "T" in start else ""
+                location = item.get("location", {})
+                venue = venue_default
+                if isinstance(location, dict):
+                    venue = location.get("name", venue_default) or venue_default
+                elif isinstance(location, str):
+                    venue = location or venue_default
+                description = (item.get("description") or "")[:500]
+                url = item.get("url", "") or ""
+                events.append(self.make_event(
+                    name=name, date=date_str, time=time_str, venue=venue,
+                    description=description, url=url, priority=priority,
+                ))
+        return events
+
     def scrape(self) -> List[Dict]:
         """Override in subclasses. Must return a list of event dicts."""
         raise NotImplementedError("Subclasses must implement scrape()")
@@ -124,6 +198,9 @@ class BaseScraper:
             "%A, %b %d, %Y",
             "%B %d",
             "%b %d",
+            "%a, %b %d",
+            "%A, %b %d",
+            "%a, %B %d",
         ]
         for fmt in formats:
             try:
@@ -134,4 +211,19 @@ class BaseScraper:
                 return dt.strftime("%Y-%m-%d")
             except ValueError:
                 continue
+        # Last resort: pull a "Mon DD[, YYYY]" token out of a noisier string
+        # (e.g. "Jul 09 8PM", "Fri, Jun 19  |  Doors 7pm"). Many cards glue the
+        # time onto the date in one element, which the exact formats above reject.
+        m = re.search(
+            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*(\d{1,2})"
+            r"(?:[a-z]{0,2})?(?:,?\s*(20\d\d))?",
+            date_str, re.I)
+        if m:
+            mon, day, yr = m.group(1), m.group(2), m.group(3)
+            yr = yr or str(datetime.now().year)
+            try:
+                dt = datetime.strptime(f"{mon} {day} {yr}", "%b %d %Y")
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
         return date_str
