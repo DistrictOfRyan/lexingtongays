@@ -593,10 +593,10 @@ class EventbriteJSScraper(PlaywrightBaseScraper):
     PRIORITY = 2
 
     SEARCH_PATHS = [
-        "https://www.eventbrite.com/d/ok--lexington/lgbtq/",
-        "https://www.eventbrite.com/d/ok--lexington/pride/",
-        "https://www.eventbrite.com/d/ok--lexington/queer/",
-        "https://www.eventbrite.com/d/ok--lexington/drag/",
+        "https://www.eventbrite.com/d/ky--lexington/lgbtq/",
+        "https://www.eventbrite.com/d/ky--lexington/pride/",
+        "https://www.eventbrite.com/d/ky--lexington/queer/",
+        "https://www.eventbrite.com/d/ky--lexington/drag/",
     ]
 
     def scrape(self) -> List[Dict]:

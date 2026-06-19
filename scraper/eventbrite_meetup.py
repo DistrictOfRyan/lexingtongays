@@ -50,7 +50,7 @@ def _is_lgbtq_relevant(name: str, description: str = "", venue: str = "") -> boo
 LEXINGTON_BBOX = "36.05,-96.05,36.25,-95.85"
 
 EVENTBRITE_API = "https://www.eventbrite.com/api/v3/destination/search/"
-EVENTBRITE_SEARCH_URL = "https://www.eventbrite.com/d/ok--lexington/{query}/"
+EVENTBRITE_SEARCH_URL = "https://www.eventbrite.com/d/ky--lexington/{query}/"
 
 
 class EventbriteScraper(BaseScraper):
@@ -281,7 +281,7 @@ class MeetupScraper(BaseScraper):
 
     source_name = "meetup"
 
-    SEARCH_URL = "https://www.meetup.com/find/?keywords={query}&location=Lexington%2C+OK"
+    SEARCH_URL = "https://www.meetup.com/find/?keywords={query}&location=Lexington%2C+KY"
 
     def scrape(self) -> List[Dict]:
         events = []
