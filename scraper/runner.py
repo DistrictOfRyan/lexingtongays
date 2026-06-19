@@ -17,6 +17,7 @@ from scraper import (
     eventbrite_meetup,
     community_calendars,
     extended_calendars,
+    rendered_sites,
     aa_meetings,
     community_groups,
     qlist,
@@ -462,6 +463,7 @@ def run_all_scrapers() -> List[Dict]:
         ("homo_hotel", homo_hotel.scrape),
         ("community_calendars", community_calendars.scrape),
         ("extended_calendars", extended_calendars.scrape),
+        ("rendered_sites", rendered_sites.scrape),  # JS-rendered venue calendars (Playwright + per-site specs)
         ("aa_meetings", aa_meetings.scrape),
         ("qlist", qlist.scrape),
         ("community_groups", community_groups.scrape),

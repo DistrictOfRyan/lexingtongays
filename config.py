@@ -24,7 +24,7 @@ SOURCES_FILE = os.path.join(DATA_DIR, "sources.json")
 GROWTH_LOG = os.path.join(DATA_DIR, "growth_log.json")
 
 # ── API Keys (set via environment variables) ─────────────────────────────
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("SITES_ANTHROPIC_KEY", "")
 META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
 META_IG_USER_ID = os.environ.get("META_IG_USER_ID", "")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
@@ -539,6 +539,7 @@ SEARCH_QUERIES = [
 # Source keys (subset of SOURCES) considered always-LGBTQ.
 # Used by runner.py to decide whether an event needs the LGBTQ keyword filter.
 LGBTQ_SOURCES = {
+    "rendered_sites",  # Lexington rendered specs (Pride Center gcal) are all lgbtq_only
     # Generic — work for any city if those source modules exist
     "recurring", "specific_orgs", "manual", "facebook_events",
     "aa_meetings", "community_groups", "qlist",

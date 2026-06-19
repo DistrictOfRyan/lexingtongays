@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Lexington Pride Center Community Calendar",
+    "url": "https://www.lexpridecenter.org/pride-community-event-calendar",
+    "strategy": "ical",
+    "ics_url": "https://calendar.google.com/calendar/ical/jc55rvd48eu94nbik04tvjho70%40group.calendar.google.com/public/basic.ics",
+    "enabled": true,
+    "priority": 1,
+    "lgbtq_only": true,
+    "sample": {"name": "\"Felting the Future\" Fibre Art Workshop", "date": "2026-06-27"},
+    "note": "GOLDMINE. The community-event-calendar page is an empty Squarespace shell that embeds a public Google Calendar (id jc55rvd48eu94nbik04tvjho70@group.calendar.google.com, decoded from the iframe src base64). We bypass the JS render and read the calendar's public basic.ics feed directly via the ical strategy. VERIFIED 2026-06-19 through the engine: 1305 events, all 1305 dated (1 upcoming on/after today). The engine parses DTSTART+SUMMARY and downstream date filtering keeps the upcoming ones. Curated Lexington queer events."
+  },
+  {
+    "name": "Lexington Pride Festival",
+    "url": "https://www.lexpridefest.org/events-2-1",
+    "strategy": "json",
+    "json_url": "https://www.lexpridefest.org/events-2-1?format=json",
+    "json_path": "upcoming",
+    "json_title_key": "title",
+    "json_date_key": "startDate",
+    "json_date_format": "epoch_ms",
+    "enabled": true,
+    "priority": 1,
+    "lgbtq_only": true,
+    "sample": {"name": "Agave & Rye Drag Show", "date": "2024-06-30", "note": "sample drawn from the same collection's past[] array, proving the json selectors (title + epoch_ms startDate) extract real YYYY-MM-DD events; live spec reads upcoming[] which is 0 between annual cycles"},
+    "note": "lexpridefest.org/schedule is just venue-area images (no dated list). The real structured events live in the Squarespace events collection /events-2-1, which exposes ?format=json with standard upcoming[]/past[] arrays and startDate as epoch_ms. We read the upcoming[] array via the json strategy. VERIFIED 2026-06-19: json strategy extracted 24 dated events from past[] (selectors proven working); upcoming[] is currently 0 because this annual festival reuses the collection between cycles and the new season is not yet loaded. Kept on upcoming[] (not past[]) so it self-populates with the next cycle instead of replaying stale 2024 events daily."
+  },
+  {
+    "name": "The Bar Complex",
+    "url": "http://www.thebarcomplex.com",
+    "strategy": "dead",
+    "enabled": false,
+    "priority": 1,
+    "lgbtq_only": true,
+    "note": "Real, operating Lexington gay bar (224 E Main St). Site is a static Weebly brochure: only HTTP (HTTPS fails ERR_SSL_VERSION_OR_CIPHER_MISMATCH), no events page, no calendar, no JSON-LD, no dated content -- just a contact form. The site itself tells visitors to check Facebook for shows. No extractable structure exists, so marked dead rather than fabricate selectors. Revisit if they add a real events page; events otherwise only on FB."
+  },
+  {
+    "name": "Crossings Lexington",
+    "url": "https://crossingslexington.com",
+    "strategy": "dead",
+    "enabled": false,
+    "priority": 1,
+    "lgbtq_only": true,
+    "note": "Real, operating Lexington queer bar (117 N Limestone). Domain crossingslexington.com does NOT resolve (NXDOMAIN on both apex and www, verified 2026-06-19) despite being listed in directories -- the website is effectively offline/parked. Their live presence is Facebook (facebook.com/CrossingsLexington), where the weekly agenda lives. No renderable site, so marked dead rather than fabricate. Revisit if the domain comes back online."
+  }
+]

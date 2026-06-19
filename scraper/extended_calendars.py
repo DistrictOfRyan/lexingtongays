@@ -1,35 +1,27 @@
-"""Extended Lexington event calendar scrapers — venues, tourism, arts, universities, libraries.
+"""Extended Lexington, KY event calendar scrapers — verified real local sources only.
 
 Uses a generic config-driven approach: JSON-LD first, then HTML fallback.
-All events are filtered for LGBTQ relevance before returning.
+All events are filtered for LGBTQ relevance before returning (except the
+LGBTQ-specific orgs, which return all events).
 
-Sources covered:
-  TOURISM/CVB:
-    TravelOK, Green Country OK, LexingtonGo
-  NEWS/MEDIA:
-    LexingtonKids, Lexington Events (lexington.events)
-  CITY:
-    City of Lexington Special Events
-  MUSEUMS & CULTURAL:
-    Philbrook, Woody Guthrie Center, Lexington Zoo, Gathering Place,
-    Lexington Garden Center, Oklahoma Aquarium, Discovery Lab, 101 Archer
-  PERFORMING ARTS:
-    Lexington PAC, BOK Center, Cain's Ballroom, Lexington Theater,
-    Hard Rock Live, River Spirit Casino, The Church Studio,
-    Cox Business Convention Center
-  SPORTS/EXPO:
-    ONEOK Field (Lexington Drillers), FC Lexington, Lexington Oilers, Expo Square
+This file previously contained out-of-state venues whose URLs had been
+cosmetically string-swapped to say "lexington". Those were all fabricated
+for Lexington and have been removed. Every source below was verified as a
+real, currently-operating Lexington, KY source with a working URL.
+
+Sources covered (all Lexington, KY):
+  TOURISM/CITY:
+    VisitLex calendar of events, City of Lexington calendar
   LIBRARIES:
-    Lexington City-County Library
+    Lexington Public Library
   UNIVERSITIES:
-    University of Lexington, OSU-Lexington, ORU, Lexington Community College
+    University of Kentucky
+  PERFORMING ARTS:
+    Central Bank Center / Lexington Opera House
   LGBTQ+:
-    Lexington Pride
-  TICKETING/AGGREGATORS:
-    SeatGeek Lexington, Meetup Lexington
-  NEIGHBORHOOD/NICHE:
-    Brookside Business Association, Cherry Street Farmers Market,
-    Lexington Farmers' Market, LexingtonGo
+    Lexington Pride Center
+  AGGREGATORS:
+    Meetup (Lexington, KY)
 """
 
 import sys
@@ -62,64 +54,24 @@ def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
 # lgbtq_only=True   → return ALL events (LGBTQ-specific orgs)
 
 SITES: List[Tuple[str, str, str, bool]] = [
-    # TOURISM / CVB
-    ("https://travelok.com/listings/view_feature/category.lodging/city.lexington", "TravelOK", "tourism", False),
-    ("https://www.greencountryok.com/cities/lexington/festivals-events-in-lexington", "Green Country Oklahoma", "tourism", False),
-    ("https://lexingtongo.com/experience", "LexingtonGo", "tourism", False),
+    # TOURISM / CITY (verified Lexington, KY)
+    ("https://www.visitlex.com/things-to-do/calendar-of-events/", "VisitLex", "tourism", False),
+    ("https://www.lexingtonky.gov/calendar", "City of Lexington", "city", False),
 
-    # NEWS / MEDIA
-    ("https://www.lexingtonkids.com/calendar/", "LexingtonKids Magazine", "media", False),
-    ("https://lexington.events", "Lexington Events", "media", False),
+    # PERFORMING ARTS (verified Lexington, KY)
+    ("https://www.centralbankcenter.com/events", "Central Bank Center / Lexington Opera House", "arts", False),
 
-    # CITY / GOVERNMENT
-    ("https://www.cityoflexington.org/government/departments/parks-recreation/events/", "City of Lexington", "city", False),
+    # LIBRARIES (verified Lexington, KY)
+    ("https://events.lexpublib.org/", "Lexington Public Library", "library", False),
 
-    # MUSEUMS & CULTURAL
-    ("https://philbrook.org/calendar/", "Philbrook Museum", "museum", False),
-    ("https://woodyguthriecenter.org/events/", "Woody Guthrie Center", "museum", False),
-    ("https://www.lexingtonzoo.org/events/", "Lexington Zoo", "museum", False),
-    ("https://www.gatheringplace.org/parkcalendar/", "Gathering Place", "museum", False),
-    ("https://www.lexingtongardencenter.com/events/", "Lexington Garden Center", "museum", False),
-    ("https://www.okaquarium.org/events/", "Oklahoma Aquarium", "museum", False),
-    ("https://discoverylab.org/events/", "Discovery Lab", "museum", False),
-    ("https://101archer.com/events/", "101 Archer", "museum", False),
-
-    # PERFORMING ARTS
-    ("https://www.lexingtonpac.com/events/", "Lexington PAC", "arts", False),
-    ("https://www.bokcenter.com/events", "BOK Center", "arts", False),
-    ("https://cainsballroom.com/events/", "Cain's Ballroom", "arts", False),
-    ("https://lexingtontheater.com/events/", "Lexington Theater", "arts", False),
-    ("https://www.hardrockcasinolexington.com/entertainment/", "Hard Rock Live Lexington", "arts", False),
-    ("https://www.riverspiritlexington.com/entertainment/", "River Spirit Casino", "arts", False),
-    ("https://www.thechurchstudio.com/events/", "The Church Studio", "arts", False),
-    ("https://www.coxcenterlexington.com/events/", "Cox Business Convention Center", "arts", False),
-
-    # SPORTS / EXPO
-    ("https://www.milb.com/lexington/schedule/", "Lexington Drillers (ONEOK Field)", "sports", False),
-    ("https://www.fclexington.com/schedule/", "FC Lexington", "sports", False),
-    ("https://www.lexingtonoilers.com/schedule/", "Lexington Oilers", "sports", False),
-    ("https://www.exposquare.com/events/", "Expo Square", "sports", False),
-
-    # LIBRARIES
-    ("https://events.lexingtonlibrary.org/", "Lexington City-County Library", "library", False),
-
-    # UNIVERSITIES
-    ("https://calendar.ulexington.edu/", "University of Lexington", "university", False),
-    ("https://lexington.okstate.edu/calendar/", "OSU-Lexington", "university", False),
-    ("https://www.oru.edu/events/", "ORU", "university", False),
-    ("https://www.lexingtoncc.edu/campus-life/events/", "Lexington Community College", "university", False),
+    # UNIVERSITIES (verified Lexington, KY)
+    ("https://calendar.uky.edu/", "University of Kentucky", "university", False),
 
     # LGBTQ+ SPECIFIC (return ALL events, no keyword filter)
-    ("https://lexingtonpride.org/events/", "Lexington Pride", "lgbtq", True),
+    ("https://www.lexpridecenter.org/pride-community-event-calendar", "Lexington Pride Center", "lgbtq", True),
 
-    # TICKETING / AGGREGATORS
-    ("https://seatgeek.com/lexington-oklahoma-tickets", "SeatGeek Lexington", "ticketing", False),
-    ("https://www.meetup.com/find/?allMeetups=true&radius=25&userFreeform=Lexington%2C+OK", "Meetup Lexington", "ticketing", False),
-
-    # NEIGHBORHOOD / NICHE
-    ("https://www.brooksidelexington.com/events/", "Brookside Lexington", "neighborhood", False),
-    ("https://www.cherrystreetfarmersmarket.com/events/", "Cherry Street Farmers Market", "neighborhood", False),
-    ("https://www.lexingtonfarmersmarket.org/events/", "Lexington Farmers' Market", "neighborhood", False),
+    # AGGREGATORS
+    ("https://www.meetup.com/find/?allMeetups=true&radius=25&userFreeform=Lexington%2C+KY", "Meetup Lexington", "ticketing", False),
 ]
 
 
