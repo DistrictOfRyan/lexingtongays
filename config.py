@@ -570,6 +570,18 @@ LGBTQ_SOURCES = {
 # even when they don't contain LGBTQ keywords. Lexington has no equivalent of Tulsa's
 # Sonic Ray yet — leave empty until a community partner emerges.
 COMMUNITY_PARTNER_KEYWORDS = [
+    # Lexington queer-welcoming venues - events here are kept as community events
+    # even without an explicit LGBTQ keyword (matches TulsaGays' community filter
+    # philosophy; William chose community-inclusive 2026-06-19). All verified-real
+    # Lexington KY venues seen hosting real queer/community events.
+    "the bar complex", "bar complex",
+    "crossings lexington", "crossings",
+    "lexington pride center", "pride center",
+    "lexington pride festival", "lexington fairness",
+    "foolish things",            # Foolish Things Coffee - hosts Shut Up & Write, queer-welcoming
+    "tapster",                   # Tapster - hosts the Lexington Pride Bar Crawl
+    "mortimer",                  # Mortimer's - Pride Night drag shows
+    "the burl", "the green lantern", "al's bar",  # well-known Lexington queer-welcoming music/dive venues
 ]
 
 # City-specific blocklist additions. Combined with the generic blocklist in runner.py.

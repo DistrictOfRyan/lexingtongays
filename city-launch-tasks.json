@@ -1,0 +1,63 @@
+{
+  "city": "Lexington Gays",
+  "slug": "lexington",
+  "domain": "lexingtongays.com",
+  "generated_at": "auto",
+  "tasks": [
+    {
+      "taskId": "lexingtongays-source-health",
+      "cronExpression": "0 8 * * 4",
+      "description": "Thursday 8am CT pre-flight check for all Lexington Gays event sources. Tests URL reachability, flags dead sources, and cross-references last week's events to catch silent failures.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-source-health\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-wednesday-blog",
+      "cronExpression": "0 9 * * 3",
+      "description": "Wednesday 9am: Write and publish a weekly SEO blog post on LexingtonGays.com, then submit to Google Search Console for indexing.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-wednesday-blog\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-wednesday-social",
+      "cronExpression": "0 20 * * 3",
+      "description": "Wednesday 3pm CT: Mid-week social post to Facebook + Instagram keeping the page warm between Monday and Saturday. Highlights Thu-Sun events from Monday's scrape.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-wednesday-social\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-newsletter-weekly",
+      "cronExpression": "0 0 * * 4",
+      "description": "Wednesday 7pm CT: Send (or draft) weekly Lexington Gays email newsletter with top events, a business spotlight, and a community note. Builds owned email audience.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-newsletter-weekly\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-saturday-preview",
+      "cronExpression": "0 14 * * 6",
+      "description": "Saturday 9am CT: Post \"This Weekend in Lexington\" highlight to Facebook + Instagram using Monday's already-scraped event data. No new scrape needed.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-saturday-preview\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-monthly-analytics",
+      "cronExpression": "0 13 1-7 * 3",
+      "description": "1st Wednesday of each month, 8am CT: Pull GA4 traffic report for lexingtongays.com and write monthly growth summary to pending-william-actions.md.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-monthly-analytics\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-directory-submissions",
+      "cronExpression": "0 15 8-14 * 2",
+      "description": "2nd Tuesday of each month, 10am CT: Submit lexingtongays.com to LGBTQ+ travel directories, local event aggregators, and community resource sites for backlinks and referral traffic.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-directory-submissions\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-partner-outreach",
+      "cronExpression": "0 15 15-21 * 2",
+      "description": "3rd Tuesday of each month, 10am CT: Research and draft outreach to 3 Lexington LGBTQ+ organizations for cross-promotion, mutual linking, and community partnerships. Drafts go to pending-william-actions.md for William's review.",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-partner-outreach\\SKILL.md"
+    },
+    {
+      "taskId": "lexingtongays-form-processor",
+      "cronExpression": "32 9 * * *",
+      "description": "Daily 9:32am -- process new Lexington Gays event form submissions from Gmail and publish to site",
+      "skillPath": "C:\\Users\\willi\\.claude\\scheduled-tasks\\lexingtongays-form-processor\\SKILL.md"
+    }
+  ],
+  "instructions": "For each task in `tasks`, the build-city skill orchestrator must call mcp__scheduled-tasks__create_scheduled_task with the corresponding taskId, cronExpression, description, and the SKILL.md content as `prompt`. Without this step the SKILL.md files sit on disk and NEVER fire. See PROCESS-FIX 12 in install_scheduled_tasks.py."
+}
