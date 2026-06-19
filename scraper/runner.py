@@ -18,6 +18,7 @@ from scraper import (
     community_calendars,
     extended_calendars,
     rendered_sites,
+    instagram_orgs,
     aa_meetings,
     community_groups,
     qlist,
@@ -702,6 +703,7 @@ def run_all_scrapers() -> List[Dict]:
         ("community_calendars", community_calendars.scrape),
         ("extended_calendars", extended_calendars.scrape),
         ("rendered_sites", rendered_sites.scrape),  # JS-rendered venue calendars (Playwright + per-site specs)
+        ("instagram_orgs", instagram_orgs.scrape),  # IG-primary gay bars: The Bar Complex (@thebarcomplex), Crossings (@crossingslexington)
         ("aa_meetings", aa_meetings.scrape),
         ("qlist", qlist.scrape),
         ("community_groups", community_groups.scrape),

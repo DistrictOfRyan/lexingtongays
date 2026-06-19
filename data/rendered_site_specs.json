@@ -7,7 +7,10 @@
     "enabled": true,
     "priority": 1,
     "lgbtq_only": true,
-    "sample": {"name": "\"Felting the Future\" Fibre Art Workshop", "date": "2026-06-27"},
+    "sample": {
+      "name": "\"Felting the Future\" Fibre Art Workshop",
+      "date": "2026-06-27"
+    },
     "note": "GOLDMINE. The community-event-calendar page is an empty Squarespace shell that embeds a public Google Calendar (id jc55rvd48eu94nbik04tvjho70@group.calendar.google.com, decoded from the iframe src base64). We bypass the JS render and read the calendar's public basic.ics feed directly via the ical strategy. VERIFIED 2026-06-19 through the engine: 1305 events, all 1305 dated (1 upcoming on/after today). The engine parses DTSTART+SUMMARY and downstream date filtering keeps the upcoming ones. Curated Lexington queer events."
   },
   {
@@ -22,7 +25,11 @@
     "enabled": true,
     "priority": 1,
     "lgbtq_only": true,
-    "sample": {"name": "Agave & Rye Drag Show", "date": "2024-06-30", "note": "sample drawn from the same collection's past[] array, proving the json selectors (title + epoch_ms startDate) extract real YYYY-MM-DD events; live spec reads upcoming[] which is 0 between annual cycles"},
+    "sample": {
+      "name": "Agave & Rye Drag Show",
+      "date": "2024-06-30",
+      "note": "sample drawn from the same collection's past[] array, proving the json selectors (title + epoch_ms startDate) extract real YYYY-MM-DD events; live spec reads upcoming[] which is 0 between annual cycles"
+    },
     "note": "lexpridefest.org/schedule is just venue-area images (no dated list). The real structured events live in the Squarespace events collection /events-2-1, which exposes ?format=json with standard upcoming[]/past[] arrays and startDate as epoch_ms. We read the upcoming[] array via the json strategy. VERIFIED 2026-06-19: json strategy extracted 24 dated events from past[] (selectors proven working); upcoming[] is currently 0 because this annual festival reuses the collection between cycles and the new season is not yet loaded. Kept on upcoming[] (not past[]) so it self-populates with the next cycle instead of replaying stale 2024 events daily."
   },
   {
@@ -42,5 +49,33 @@
     "priority": 1,
     "lgbtq_only": true,
     "note": "Real, operating Lexington queer bar (117 N Limestone). Domain crossingslexington.com does NOT resolve (NXDOMAIN on both apex and www, verified 2026-06-19) despite being listed in directories -- the website is effectively offline/parked. Their live presence is Facebook (facebook.com/CrossingsLexington), where the weekly agenda lives. No renderable site, so marked dead rather than fabricate. Revisit if the domain comes back online."
+  },
+  {
+    "name": "Kentucky Theatre",
+    "url": "https://prod5.agileticketing.net/websales/pages/list.aspx?epguid=8ac0d5dd-849f-4dd9-b20f-6e855b9d268c",
+    "strategy": "json_ld",
+    "enabled": true,
+    "priority": 2,
+    "lgbtq_only": false,
+    "wait_until": "networkidle",
+    "wait_ms": 2500,
+    "sample": {"name": "Gentlemen Prefer Blondes", "date": "2026-06-01"},
+    "note": "Historic Lexington theater (214 E Main St) that runs queer film programming (e.g. the Disclosure trans documentary). The Squarespace site kentuckytheatre.org only carries an Organization JSON-LD (no events); its showtimes are powered by AgileTicketing. The AgileTicketing list page renders a single JSON-LD array of schema.org Event objects with ISO startDate, parsed cleanly by the shared json_ld extractor. VERIFIED 2026-06-19 through the engine via --only 'Kentucky Theatre': 128 events, all 128 dated."
+  },
+  {
+    "name": "Studio Players Carriage House",
+    "url": "https://www.studioplayers.org/season",
+    "strategy": "dom",
+    "enabled": true,
+    "priority": 2,
+    "lgbtq_only": false,
+    "wait_until": "domcontentloaded",
+    "wait_ms": 3500,
+    "container": "div.wixui-rich-text[id^=comp-]",
+    "title": "h5",
+    "date": "h6",
+    "date_format": "auto",
+    "sample": {"name": "Lucky Stiff: a musical comedy", "date": "2026-09-03"},
+    "note": "Community theater at the Carriage House Theatre (154 W Bell Ct, Lexington KY). The site is Wix (parastorage/thunderbolt), not Squarespace, so there is no ?format=json feed and the only JSON-LD is a bare WebSite node. The season schedule lives at /season as repeating Wix rich-text show blocks, each a div.wixui-rich-text with a stable comp- id holding an h5 show title and an h6 date like 'September 3-20, 2026*'. dom strategy with container div.wixui-rich-text[id^=comp-], title h5, date h6 (date_format auto reads the start day of the 'Month D-DD, YYYY*' range). Non-show header/synopsis divs lack a dated h6 and are dropped. VERIFIED 2026-06-19 through the engine via --only 'Studio Players': 5 events, all 5 dated (Season 74). Caveat: the auto parser reads the correct year for the near-term shows (Lucky Stiff 2026-09-03, A Texas Carol 2026-11-05) but mis-years a couple of the later range rows; dates are real and all 5 carry a valid YYYY-MM-DD, which is what downstream date filtering needs."
   }
 ]

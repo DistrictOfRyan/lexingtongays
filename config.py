@@ -539,6 +539,7 @@ SEARCH_QUERIES = [
 # Source keys (subset of SOURCES) considered always-LGBTQ.
 # Used by runner.py to decide whether an event needs the LGBTQ keyword filter.
 LGBTQ_SOURCES = {
+    "bar_complex_ig", "crossings_ig",  # Lexington IG-primary gay bars (genuine LGBTQ venues, trust all posts)
     "rendered_sites",  # Lexington rendered specs (Pride Center gcal) are all lgbtq_only
     # Generic — work for any city if those source modules exist
     "recurring", "specific_orgs", "manual", "facebook_events",
@@ -582,6 +583,9 @@ COMMUNITY_PARTNER_KEYWORDS = [
     "tapster",                   # Tapster - hosts the Lexington Pride Bar Crawl
     "mortimer",                  # Mortimer's - Pride Night drag shows
     "the burl", "the green lantern", "al's bar",  # well-known Lexington queer-welcoming music/dive venues
+    "ole hookers",               # downtown dive bar (205 S Limestone), karaoke, queer-welcoming
+    "kentucky theatre", "kentucky theater",  # historic theater (214 E Main); runs queer film series (Disclosure, etc.)
+    "carriage house", "studio players",      # Studio Players community theater (154 W Bell Ct)
 ]
 
 # City-specific blocklist additions. Combined with the generic blocklist in runner.py.

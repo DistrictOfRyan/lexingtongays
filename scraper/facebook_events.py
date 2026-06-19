@@ -64,6 +64,9 @@ PAGE_URLS = [
     # so it is covered via instagram_orgs, not here.
     # Bars & nightlife
     "https://www.facebook.com/CrossingsLexington/events",        # Crossings - Lexington's LGBTQ+ dive bar (9.3k likes, verified)
+    "https://www.facebook.com/olehookers/events",                # Ole Hookers - downtown dive (205 S Limestone), karaoke/queer-welcoming (verified FB)
+    # Theaters / arts (queer-welcoming; KY Theatre runs queer film series)
+    "https://www.facebook.com/studioplayers/events",             # Studio Players @ Carriage House Theatre (154 W Bell Ct, verified FB)
     # Community orgs / Pride
     "https://www.facebook.com/LexPrideCenter/events",            # Lexington Pride Center (6.9k likes, verified, 389 Waller Ave)
     "https://www.facebook.com/LexingtonPrideFestival/events",    # Lexington Pride Festival / Lexington Gay Services Org (16.3k likes, verified)
