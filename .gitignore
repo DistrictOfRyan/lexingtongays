@@ -3,3 +3,5 @@ __pycache__/
 .env
 data/
 logo/tulsa_skyline_source.jpg
+
+meta_api_config.json
