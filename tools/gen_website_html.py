@@ -490,7 +490,8 @@ else:
     sys.stderr.write(
         "[FATAL] index.html missing '<!-- EVENTS-START -->' + '</main>' injection "
         "boundaries; homepage NOT updated. Restore the markers in docs/index.html.\n")
-    _dump = os.path.join(os.path.dirname(_idx_path), '_day_sections_unplaced.html')
+    # dump OUTSIDE docs/ (repo root) so a debug artifact can never be published
+    _dump = os.path.join(os.path.dirname(os.path.dirname(_idx_path)), '_day_sections_unplaced.html')
     with open(_dump, 'w', encoding='utf-8') as f:
         f.write(result)
     sys.stderr.write(f"[FATAL] generated day-sections dumped to {_dump}\n")
