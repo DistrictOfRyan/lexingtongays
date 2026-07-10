@@ -552,7 +552,88 @@ if eotw:
         flags=re.DOTALL,
     )
 
+# ── Event structured data (schema.org/Event ItemList) on the indexable homepage ──
+#   Makes the week's events eligible for Google event rich-results and AI-search
+#   citation. Injected between the <!-- EVENTLIST-SCHEMA-START/END --> markers.
+SITE = 'https://lexingtongays.com'
+try:
+    from zoneinfo import ZoneInfo
+    _TZ = ZoneInfo('America/New_York')  # Lexington, KY is Eastern
+except Exception:
+    _TZ = None
+
+def _iso_start(date_str, time_str):
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str or ''):
+        return None
+    m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)', (time_str or ''), re.I)
+    if not m:
+        return date_str  # date-only startDate is valid schema
+    h = int(m.group(1)) % 12
+    if m.group(3).lower().startswith('p'):
+        h += 12
+    mn = int(m.group(2) or 0)
+    off = '-05:00'  # Eastern Standard fallback
+    if _TZ is not None:
+        try:
+            _dt = datetime.strptime(date_str, '%Y-%m-%d').replace(hour=h, minute=mn, tzinfo=_TZ)
+            _os = _dt.utcoffset()
+            _tot = int(_os.total_seconds()) if _os else -18000
+            _sign = '-' if _tot < 0 else '+'
+            _tot = abs(_tot)
+            off = f"{_sign}{_tot // 3600:02d}:{(_tot % 3600) // 60:02d}"
+        except Exception:
+            pass
+    return f"{date_str}T{h:02d}:{mn:02d}:00{off}"
+
+_events_ld = []
+for _ev in all_flat:
+    _d = _ev.get('date', '')
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', _d or ''):
+        continue
+    _venue = (_ev.get('venue') or '').split(',')[0].strip()
+    _u = (_ev.get('url') or '').strip()
+    _obj = {
+        "@type": "Event",
+        "name": _ev.get('name', '')[:110],
+        "startDate": _iso_start(_d, _ev.get('time', '')),
+        "eventStatus": "https://schema.org/EventScheduled",
+        "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+        "location": {
+            "@type": "Place",
+            "name": _venue or "Lexington, KY",
+            "address": {"@type": "PostalAddress", "addressLocality": "Lexington",
+                        "addressRegion": "KY", "addressCountry": "US"},
+        },
+        "organizer": {"@type": "Organization", "name": "Lexington Gays", "url": SITE},
+        "image": SITE + "/favicon-512.png",
+    }
+    _desc = (_ev.get('website_description') or _ev.get('description') or '').strip()
+    if _desc:
+        _obj["description"] = ' '.join(_desc.split())[:300]
+    _obj["url"] = _u if _u.startswith('http') else SITE + "/"
+    _events_ld.append(_obj)
+
+if _events_ld:
+    _itemlist = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": f"LGBTQ+ Events in Lexington, KY: {_week_start} to {_week_end}",
+        "itemListElement": [
+            {"@type": "ListItem", "position": _i + 1, "item": _o}
+            for _i, _o in enumerate(_events_ld)
+        ],
+    }
+    _ld_block = ('<!-- EVENTLIST-SCHEMA-START -->\n<script type="application/ld+json">'
+                 + json.dumps(_itemlist, ensure_ascii=False)
+                 + '</script>\n<!-- EVENTLIST-SCHEMA-END -->')
+    if '<!-- EVENTLIST-SCHEMA-START -->' in _html2:
+        _html2 = re.sub(r'<!-- EVENTLIST-SCHEMA-START -->.*?<!-- EVENTLIST-SCHEMA-END -->',
+                        lambda _: _ld_block, _html2, flags=re.DOTALL)
+    else:
+        _html2 = _html2.replace('</head>', _ld_block + '\n</head>', 1)
+
 with open(_idx_path, 'w', encoding='utf-8') as _f:
     _f.write(_html2)
 print(f"Updated date range: {_week_start} — {_week_end}")
 print(f"Updated EOTW banner: {eotw.get('name') if eotw else 'none'}")
+print(f"Injected schema.org/Event ItemList: {len(_events_ld)} events")

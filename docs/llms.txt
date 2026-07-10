@@ -6,6 +6,15 @@
 - /blog/: Long-form guides to gay Lexington, venues, neighborhoods, travel
 - /directory.html: Searchable directory of LGBTQ+ owned and friendly businesses
 
+## Guides (long-form, citable)
+- /blog/moving-to-lexington-lgbtq.html: Moving to Lexington as an LGBTQ+ person: neighborhoods, safety, community
+- /blog/gay-bars-lexington.html: Gay bars in Lexington: The Bar Complex, Crossings, and where to go out
+- /blog/gay-lexington-travel-guide.html: Gay Lexington travel guide: where to stay, eat, and play
+- /blog/lexington-vs-louisville-gay-scene.html: Lexington vs Louisville: comparing the two Kentucky gay scenes
+- /blog/new-to-lexington-queer-starter-pack.html: New to Lexington queer starter pack
+- /blog/date-night-queer-lexington.html: Queer date-night ideas in Lexington
+- /blog/lgbtq-sports-lexington.html: LGBTQ+ sports and rec leagues in Lexington
+
 ## About
 Lexington Gays is a volunteer-run community resource. We publish a curated weekly
 LGBTQ+ event guide for Lexington, KY along with travel and lifestyle
