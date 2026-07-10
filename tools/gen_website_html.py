@@ -483,10 +483,18 @@ if _inject_start != -1 and _inject_end != -1:
         _f.write(_new_html)
     print(f"Injected into docs/index.html (replaced chars {_inject_start}-{_inject_end})")
 else:
-    print(f"[warn] Could not find injection boundaries in index.html")
-    with open('/tmp/day_sections.html', 'w', encoding='utf-8') as f:
+    # HARD FAIL: a missing marker means the homepage silently never updates.
+    # This exact gap froze the live site on a placeholder for ~10 weeks because
+    # the old code wrote to /tmp and still exited 0, so the weekly task reported
+    # success. Exit non-zero so the caller SEES the failure. (gap G50)
+    sys.stderr.write(
+        "[FATAL] index.html missing '<!-- EVENTS-START -->' + '</main>' injection "
+        "boundaries; homepage NOT updated. Restore the markers in docs/index.html.\n")
+    _dump = os.path.join(os.path.dirname(_idx_path), '_day_sections_unplaced.html')
+    with open(_dump, 'w', encoding='utf-8') as f:
         f.write(result)
-    print("Wrote to /tmp/day_sections.html instead")
+    sys.stderr.write(f"[FATAL] generated day-sections dumped to {_dump}\n")
+    sys.exit(1)
 
 print(f"Generated {len(lines)} lines, {len(result)} chars")
 for d in DAYS:
