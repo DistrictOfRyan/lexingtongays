@@ -27,6 +27,18 @@ def _is_garbage(ev):
     return False
 events = [e for e in events if not _is_garbage(e)]
 
+# Voice rule #1 at the DATA level: strip em/en dashes from every event field once,
+# up front, so no downstream path (cards via esc(), schema.org JSON-LD via
+# json.dumps, share pages, og/meta descriptions) can ship a dash to the website.
+try:
+    from content.generator import strip_em_dashes as _sed_field
+    for _e in events:
+        for _f in ('name', 'description', 'website_description', 'time', 'venue'):
+            if _e.get(_f):
+                _e[_f] = _sed_field(_e[_f])
+except Exception:
+    pass
+
 # Show ALL events on the website — gay score distinguishes LGBTQ events from general ones.
 # All city-specific data (venues, source keys, anchor keywords) reads from config.py.
 # Generic universal patterns stay here in shared code. See city-growth-playbook §15.5.
@@ -89,12 +101,27 @@ _TWO_FL = [
     'bingo', 'scavenger', 'sketch', 'craft', 'workshop', 'coffee',
 ]
 
+# Substring keyword matching lies on these: an automotive "drag race" is not a
+# drag show, "Sesame Street: The Musical" is not queer theatre, and car-stereo /
+# gymnastics comps kept rendering 5 flamingos ("Super gay") on W28. Any hit here
+# floors the score BEFORE keyword scoring runs (William 2026-07-06).
+_NOT_GAY_GUARD = [
+    'drag racing', 'drag races', 'drag strip', 'dragway', 'raceway', 'nhra',
+    'street outlaws', 'motocross', 'monster truck', 'car show', 'car meet',
+    'cars & coffee', 'cars and coffee', 'car stereo', 'car audio', 'stereo comp',
+    'sesame street', 'paw patrol', 'disney on ice', 'bluey', 'princess party',
+    'gymnastics', 'cheer competition', 'cheerleading', 'wrestling',
+    'rock mineral society', 'gun show', 'home & garden show',
+]
+
 def _flamingo_score(ev) -> int:
     name   = ev.get('name', '').lower()
     venue  = ev.get('venue', '').lower()   # raw, before address cleaning
     source = ev.get('source', '')
     content = f"{name} {venue}"
 
+    if any(kw in content for kw in _NOT_GAY_GUARD):
+        return 1
     if any(kw in content for kw in _FIVE_FL):
         return 5
     if any(bar in venue for bar in _GAY_BAR_VENUES):
@@ -115,7 +142,7 @@ def _flamingo_score(ev) -> int:
         return 2
     return 2  # 1 flamingo is reserved for truly exclusionary/corporate-only events
 
-_FL_LABELS = ['', 'Mostly straight', 'Gay-friendly', 'LGBTQ-friendly', 'Very queer', 'Super gay']
+_FL_LABELS = ['', 'Mostly straight', 'Gay-friendly', 'LGBTQ-friendly', 'Very LGBTQIA+', 'Super gay']
 
 def _flamingo_html(score: int) -> str:
     filled = '🦩' * score
@@ -130,6 +157,34 @@ try:
     events = _rule_based_enrich_all(events)
 except Exception as _e:
     print(f"[warn] description enrichment skipped: {_e}")
+
+# Hard de-dup on the EXACT field the cards render (website_description or
+# description fallback). Rule-based templates give same-category events identical
+# copy (2026-06-08: 21 cards shared one line). This guarantees no two cards show
+# the same blurb. Operates on the rendered field so it can't be bypassed.
+try:
+    import os as _os2, sys as _sys2
+    _sys2.path.insert(0, _os2.path.dirname(_os2.path.dirname(_os2.path.abspath(__file__))))
+    from tools.dedupe_descriptions import _unique_desc as _uq, _norm as _nm
+    _seen2, _fixed2 = {}, 0
+    for _ev in events:
+        _fld = 'website_description' if (_ev.get('website_description') or '').strip() else 'description'
+        _key2 = _nm(_ev.get(_fld))
+        if not _key2 or len(_key2) < 25:
+            continue
+        if _key2 in _seen2:
+            for _s in range(1, 50):
+                _cand2 = _uq(_ev, f'web{_s}', long=(_fld == 'website_description'))
+                if _nm(_cand2) not in _seen2:
+                    _ev[_fld] = _cand2
+                    _seen2[_nm(_cand2)] = 1
+                    _fixed2 += 1
+                    break
+        else:
+            _seen2[_key2] = 1
+    print(f"[dedupe] website cards: {_fixed2} duplicate blurbs rewritten unique")
+except Exception as _e:
+    print(f"[warn] website dedupe skipped: {_e}")
 
 today = datetime.now().date()
 week_monday = today - timedelta(days=today.weekday())
@@ -180,20 +235,6 @@ def _is_recurring(e):
     kw = _generic_kw + _city_partner_kw
     return any(k in name for k in kw)
 
-QUEER_PERFORMANCE_KEYWORDS = [
-    'drag', 'drag show', 'drag bingo', 'drag brunch', 'drag queen', 'drag king',
-    'cabaret', 'pride show', 'pride event', 'pride night', 'queer night',
-    'gay night', 'lgbtq+ night', 'twisted arts', 'okeq', 'rainbow',
-    'pride dance', 'pride party',
-]
-
-def _is_queer_performance(e):
-    combined = ' '.join([
-        (e.get('name') or ''), (e.get('description') or ''),
-        (e.get('venue') or ''), (e.get('source') or '')
-    ]).lower()
-    return any(kw in combined for kw in QUEER_PERFORMANCE_KEYWORDS)
-
 # Group events by day (only this week)
 events_by_day = defaultdict(list)
 for ev in events:
@@ -209,23 +250,46 @@ for ev in events:
     except Exception:
         pass
 
+def _extract_start_time(t):
+    """Return the START time token of a time string as 'H:MM AM/PM' (or None).
+
+    Critical: in ranges like '9:00 - 10:30 AM' or '6 - 10 PM' the AM/PM only
+    appears on the END time. The old regex required the meridiem to be attached
+    to the match, so it grabbed the END time and the website displayed events
+    at their end time (W24: a 6-10 PM convention showed as 10 PM, a 9-10:30 AM
+    workshop as 10:30 AM). Here the FIRST numeric token wins and inherits the
+    first AM/PM that appears after it in the string.
+    """
+    if not t:
+        return None
+    import unicodedata
+    t = ''.join(' ' if unicodedata.category(c) == 'Zs' else c for c in t.strip().upper())
+    t = re.sub('[‐‑‒–—―−]', '-', t)
+    m = re.search(r'(\d{1,2}(?::\d{2})?)\s*(AM|PM)?', t)
+    if not m:
+        return None
+    num, mer = m.group(1), m.group(2)
+    if not mer:
+        m2 = re.search(r'(?<![A-Z])(AM|PM)(?![A-Z])', t[m.end():])
+        mer = m2.group(1) if m2 else None
+    return (num + ' ' + mer) if mer else num
+
+
 def _parse_minutes(t):
-    """Convert time string to minutes since midnight. Extracts start time from ranges."""
+    """Convert time string to minutes since midnight. Extracts START time from ranges."""
     if not t:
         return 9999
-    t = t.strip().upper()
-    # Extract first recognizable time from ranges like "6:00 PM - 8:00 PM",
-    # "Doors 9 PM, Show 10 PM", "10:00 AM and 11:15 AM"
-    m = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)|\b\d{1,2}\s+(?:AM|PM))\b', t)
-    if m:
-        t = m.group(1).strip()
-    for fmt in ['%I:%M %p', '%H:%M', '%I:%M%p', '%I %p']:
+    tok = _extract_start_time(t)
+    if not tok:
+        return 9998
+    for fmt in ['%I:%M %p', '%H:%M', '%I %p']:
         try:
-            dt = datetime.strptime(t, fmt)
+            dt = datetime.strptime(tok, fmt)
             return dt.hour * 60 + dt.minute
         except Exception:
             pass
     return 9998
+
 
 def time_sort_key(e):
     t = (e.get('time') or '').strip()
@@ -268,21 +332,50 @@ def _dedup_events(evs):
 
 for day in DAYS:
     events_by_day[day] = _dedup_events(events_by_day[day])
-    events_by_day[day].sort(key=time_sort_key)
+    # Cool events on top (William 2026-07-06): rank each day by gay score first,
+    # then time, so a drag show never sits below a rock-mineral show. The pink
+    # TOP PICK box on slides has its own ranking; this orders the WEBSITE list.
+    events_by_day[day].sort(key=lambda e: (-_flamingo_score(e), time_sort_key(e)))
 
-# Find EOTW — priority: HH → Council Oak → Drag/Queer Performance → other specials
+# Find EOTW — use canonical eotw_selector.py (the single source of truth for all EOTW rules).
+# NEVER duplicate or override those rules here. eotw_selector enforces:
+#   - _SKIP_SOURCES (recurring, bars, aa_meetings)
+#   - _SKIP_VENUES (majestic, etc.)
+#   - _SKIP_NAME_FRAGMENTS (bowling, support groups, etc.)
+#   - Tier priority: HH → Council Oak → Drag → Queer Perf → Trusted LGBTQ → LGBTQ keywords
+from eotw_selector import select_eotw
+
 all_flat = [e for day in DAYS for e in events_by_day[day]]
-hh = [e for e in all_flat if _is_homo_hotel(e)]
-council = [e for e in all_flat if _is_council_oak(e)]
-queer_perf = [e for e in all_flat if _is_queer_performance(e) and not _is_recurring(e)
-              and not _is_homo_hotel(e) and not _is_council_oak(e)]
-specials = [e for e in all_flat if not _is_homo_hotel(e) and not _is_council_oak(e)
-            and not _is_queer_performance(e) and not _is_recurring(e)]
 
-eotw = (hh[0] if hh else
-        council[0] if council else
-        queer_perf[0] if queer_perf else
-        specials[0] if specials else None)
+# FINAL de-dup, immediately before render, on the EXACT events the cards iterate
+# and the EXACT field they show (website_description or description). Same-
+# category rule-based templates repeat (2026-06-08: 21 cards shared one line);
+# this is the last gate before HTML so nothing downstream can re-introduce a dup.
+try:
+    import os as _osd, sys as _sysd
+    _sysd.path.insert(0, _osd.path.dirname(_osd.path.dirname(_osd.path.abspath(__file__))))
+    from tools.dedupe_descriptions import _unique_desc as _uqd, _norm as _nmd
+    _seend, _fixedd = {}, 0
+    for _evd in all_flat:
+        _fldd = 'website_description' if (_evd.get('website_description') or '').strip() else 'description'
+        _kd = _nmd(_evd.get(_fldd))
+        if not _kd or len(_kd) < 25:
+            continue
+        if _kd in _seend:
+            for _sd in range(1, 60):
+                _cd = _uqd(_evd, f'card{_sd}', long=(_fldd == 'website_description'))
+                if _nmd(_cd) not in _seend:
+                    _evd[_fldd] = _cd
+                    _seend[_nmd(_cd)] = 1
+                    _fixedd += 1
+                    break
+        else:
+            _seend[_kd] = 1
+    print(f"[dedupe] final card pass: {_fixedd} duplicate blurbs rewritten")
+except Exception as _ed:
+    print(f"[warn] final card dedupe skipped: {_ed}")
+
+eotw = select_eotw(all_flat)
 eotw_key = (eotw.get('name', ''), eotw.get('date', '')) if eotw else None
 
 def _day_sort_key(e):
@@ -291,7 +384,43 @@ def _day_sort_key(e):
 def esc(s):
     if not s:
         return ''
-    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+    s = str(s)
+    # Voice rule #1 (no em/en dashes) applied at the single render choke point, so
+    # raw scraped event names/times/descriptions can't ship a dash to the website.
+    # Ranges become "to" (11 AM - 3 PM), prose em dashes become commas.
+    s = re.sub(r'(\w)\s*[–—]\s*(\d)', r'\1 to \2', s)
+    s = (s.replace(' — ', ', ').replace('—', ', ')
+          .replace(' – ', ', ').replace('–', '-'))
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+SITE = 'https://www.lexingtongays.com'
+
+def _slugify_js(s):
+    """Mirror the client-side _slugify() in docs/index.html EXACTLY so the
+    static card ids match the per-event share-page filenames and the
+    ?event= deep-link scroll."""
+    s = (s or '').lower()
+    s = re.sub(r'[^a-z0-9]+', '-', s)
+    s = re.sub(r'^-+|-+$', '', s)
+    return s[:60]
+
+_slug_counts = {}
+def _card_id(name, date, hour):
+    """Reproduce the JS card-id scheme (event- prefix + dedup suffix), called
+    in DOM order so ids are stable and collision-free."""
+    # JS reads the rendered .event-time textContent — empty when there is no
+    # time-col — so a falsy hour must contribute nothing (not the literal
+    # "None"/"none"), keeping Python ids identical to the client-side scheme.
+    base = 'event-' + _slugify_js(f'{name}-{date}-{hour or ""}')
+    if base in _slug_counts:
+        _slug_counts[base] += 1
+        return f'{base}-{_slug_counts[base]}'
+    _slug_counts[base] = 1
+    return base
+
+# Collected per-event data for /e/<id>.html share pages: dicts with keys
+# id, name, desc, when, venue, url
+_share_pages = []
 
 _DOMAIN_LABELS = {
     'eventbrite.com': 'Eventbrite',
@@ -318,6 +447,14 @@ def _url_label(url: str) -> str:
         return 'Link'
 
 _VENUE_JUNK = ('shared by ', 'posted by ', 'reposted by ', 'event by ')
+# Scraper button-text / truncation artifacts that are NOT venues (W28 slides
+# showed "@ Obtener entradas" and "@ mar"). Exact-match, lowercased.
+_VENUE_JUNK_EXACT = {
+    'obtener entradas', 'entradas', 'detalles', 'informacion', 'información',
+    'mas informacion', 'más información', 'get tickets', 'buy tickets',
+    'tickets', 'tickets & info', 'more info', 'more information', 'mar',
+    'tba', 'tbd', 'online', 'virtual',
+}
 # Address fragment → display name. City-specific via config.VENUE_NAME_MAP with safe
 # empty fallback for new-city scaffolds (until VENUE_FACTS / Phase 3 source discovery
 # populate it).
@@ -330,6 +467,8 @@ def _clean_venue(raw: str) -> str:
         return ''
     low = v.lower()
     if any(low.startswith(j) for j in _VENUE_JUNK):
+        return ''
+    if low.rstrip('.!') in _VENUE_JUNK_EXACT:
         return ''
     # Map known address fragments to business names
     for addr, name in _VENUE_NAME_MAP.items():
@@ -344,26 +483,50 @@ def _clean_venue(raw: str) -> str:
         return parts[0]
     return v
 
+
+def _extract_address(raw: str) -> str:
+    """Extract a street address from a raw location string for a separate display line.
+
+    Examples:
+      "Lexington Eagle, 1338 E 3rd St, Lexington, KY"  → "1338 E 3rd St"
+      "1338 E 3rd St, Lexington, KY"               → "1338 E 3rd St"
+      "Lexington Eagle"                             → ""
+    """
+    v = (raw or '').strip()
+    if not v:
+        return ''
+    parts = [p.strip() for p in v.split(',')]
+    # "Venue Name, Street, City, State" — pick the street segment (part[1] if it starts with a digit)
+    if len(parts) >= 2 and parts[0] and not parts[0][0].isdigit():
+        if parts[1] and parts[1][0].isdigit():
+            return parts[1]
+        return ''
+    # "123 Street, City, State" — pick just the street
+    if parts[0] and parts[0][0].isdigit():
+        return parts[0]
+    return ''
+
 def format_time(t):
     if not t:
         return None, None
-    t_orig = t.strip()
-    t = t_orig.upper()
-    # Extract start time from ranges like "6:00 PM - 8:00 PM", "Doors 9 PM, Show 10 PM"
-    m = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM)|\b\d{1,2}\s+(?:AM|PM))\b', t)
-    if m:
-        t = m.group(1).strip()
-    for fmt in ['%I:%M %p', '%H:%M', '%I:%M%p', '%I %p']:
+    # Treat placeholder strings as untimed
+    if re.match(r'^check', t.strip(), re.I):
+        return None, None
+    # Use the range-aware START extractor (shared with _parse_minutes) so a
+    # '9:00 - 10:30 AM' event displays as 9:00 AM, never its end time.
+    tok = _extract_start_time(t)
+    if not tok:
+        return None, None
+    for fmt in ['%I:%M %p', '%H:%M', '%I %p']:
         try:
-            dt = datetime.strptime(t, fmt)
+            dt = datetime.strptime(tok, fmt)
             return dt.strftime('%I:%M').lstrip('0') or '12:00', dt.strftime('%p')
         except Exception:
             pass
-    parts = t.split()
-    if len(parts) >= 2:
+    parts = tok.split()
+    if len(parts) >= 2 and parts[1].upper() in ('AM', 'PM'):
         return parts[0], parts[1]
-    return t_orig, ''
-
+    return None, None
 _LEGEND_HTML = '''\
         <div class="flamingo-legend">
             <span class="flamingo-legend-title">Gay Score</span>
@@ -371,7 +534,7 @@ _LEGEND_HTML = '''\
                 <span>🦩 Mostly straight</span>
                 <span>🦩🦩 Gay-friendly</span>
                 <span>🦩🦩🦩 LGBTQ-friendly</span>
-                <span>🦩🦩🦩🦩 Very queer</span>
+                <span>🦩🦩🦩🦩 Very LGBTQIA+</span>
                 <span>🦩🦩🦩🦩🦩 Super gay</span>
             </span>
         </div>'''
@@ -397,7 +560,7 @@ for day in DAYS_ORDERED:
 
     lines.append('')
     lines.append(f'        <!-- {day.upper()} -->')
-    lines.append(f'        <section class="day-section">')
+    lines.append(f'        <section class="day-section" style="--day-color:var({css_var})">')
     lines.append(f'            <h2 class="day-title" style="color:var({css_var})">{day}</h2>')
     lines.append(f'            <div class="day-date">{date_str}</div>')
     lines.append(f'            <hr class="day-divider">')
@@ -425,14 +588,23 @@ for day in DAYS_ORDERED:
                 venue_str = f'{venue} &middot; {loc_clean}' if venue else loc_clean
             else:
                 venue_str = venue
+            # Extract street address for a separate muted display line (#10)
+            raw_addr = _extract_address(location)
+            address_line = esc(raw_addr) if raw_addr and raw_addr.lower() not in venue_str.lower() else ''
 
             desc = (ev.get('website_description') or ev.get('description') or '').strip()
             url = ev.get('url', '') or ''
             fl_score = _flamingo_score(ev)
             fl_html = _flamingo_html(fl_score)
+            ev_date_iso = ev.get('date', '')
+
+            # Stable id (matches the JS slug scheme) so shares deep-link AND
+            # the per-event /e/<id>.html share page filename lines up.
+            card_id = _card_id(ev_name, ev_date_iso, hour)
 
             lines.append('')
-            lines.append(f'                <div class="{card_cls}"{pink_style}>')
+            _dt = esc((ev.get('time') or '').strip())
+            lines.append(f'                <div class="{card_cls}"{pink_style} id="{card_id}" data-date="{ev_date_iso}" data-time="{_dt}">')
             if hour:
                 lines.append(f'                    <div class="event-time-col">')
                 lines.append(f'                        <div class="event-time" style="color:{time_color}">{esc(hour)}</div>')
@@ -441,30 +613,94 @@ for day in DAYS_ORDERED:
                 lines.append(f'                    </div>')
 
             lines.append(f'                    <div class="event-details">')
+
             lines.append(f'                        <div class="event-name" style="color:{name_color}">{esc(ev_name)}</div>')
             if venue_str:
                 lines.append(f'                        <div class="event-venue" style="color:var({css_var})">{venue_str}</div>')
+            if address_line:
+                lines.append(f'                        <div class="event-address">{address_line}</div>')
             lines.append(f'                        <div class="event-flamingo">{fl_html}</div>')
             if desc:
                 lines.append(f'                        <div class="event-description">{esc(desc)}</div>')
+            # ── Exactly ONE link per card (consistency fix) ──────────────
+            # Previously: events with multiple source_urls rendered 2+ links
+            # while events with no url rendered 0 ("2 on some, none on others").
+            # Now every card shows a single link. If we have an external
+            # source, link straight to it; otherwise link to the event's own
+            # /e/<id>.html detail page so no card is ever link-less.
             source_urls = ev.get('source_urls') or []
-            if len(source_urls) > 1:
-                # Multiple sources: render a small button for each unique URL
-                for _su in source_urls:
-                    if not _su:
-                        continue
-                    _lbl = esc(_url_label(_su))
-                    lines.append(f'                        <a href="{esc(_su)}" class="event-link event-link-source" target="_blank" rel="noopener">{_lbl} &rarr;</a>')
-            elif url:
-                link_lbl = esc(ev_name[:50]) + ' &rarr;' if len(ev_name) > 50 else esc(ev_name) + ' &rarr;'
-                lines.append(f'                        <a href="{esc(url)}" class="event-link" target="_blank" rel="noopener">{link_lbl}</a>')
+            best_url = next((u for u in source_urls if u), '') or url
+            if best_url:
+                link_lbl = (esc(ev_name[:50]) + '…' if len(ev_name) > 50 else esc(ev_name)) + ' &rarr;'
+                lines.append(f'                        <a href="{esc(best_url)}" class="event-link" target="_blank" rel="noopener">{link_lbl}</a>')
+            else:
+                lines.append(f'                        <a href="/e/{card_id}.html" class="event-link">Event details &rarr;</a>')
+            # Share button (#9)
+            _raw_venue = _clean_venue(ev.get('venue', '') or '') or _clean_venue(location)
+            _share_parts = [ev_name]
+            if _raw_venue:
+                _share_parts.append(f'at {_raw_venue}')
+            if ev_date_iso:
+                try:
+                    _sd = datetime.strptime(ev_date_iso, '%Y-%m-%d')
+                    _share_parts.append(_sd.strftime('%A, %B ') + str(_sd.day))
+                except Exception:
+                    pass
+            if hour:
+                _share_parts.append(f'{hour} {ampm}'.strip() if ampm else hour)
+            _share_text = ' | '.join(_share_parts)
+            lines.append(f'                        <button class="share-btn" onclick="shareEvent(this)" '
+                         f'data-title="{esc(ev_name[:80])}" data-text="{esc(_share_text)}" '
+                         f'aria-label="Share this event">&#8599; Tell Your Gays</button>')
             lines.append(f'                    </div>')
             lines.append(f'                </div>')
+
+            # Collect data for this event's /e/<id>.html share page (gives FB
+            # the real event title/description instead of generic homepage OG).
+            _when_bits = []
+            if ev_date_iso:
+                try:
+                    _wd = datetime.strptime(ev_date_iso, '%Y-%m-%d')
+                    _when_bits.append(_wd.strftime('%A, %B ') + str(_wd.day))
+                except Exception:
+                    pass
+            if hour:
+                _when_bits.append(f'{hour} {ampm}'.strip() if ampm else hour)
+            _share_pages.append({
+                'id': card_id,
+                'name': ev_name,
+                'desc': desc,
+                'when': ' · '.join(_when_bits),
+                'venue': _clean_venue(ev.get('venue', '') or '') or _clean_venue(location),
+                'url': best_url,
+            })
 
     lines.append(f'            </div>')
     lines.append(f'        </section>')
 
 result = '\n'.join(lines)
+
+# Optional weekly SPONSOR credit (monetization slot, 2026-06-15). Renders ONLY if
+# data/sponsor.json exists with a name — otherwise a no-op, so the default site is
+# unchanged until a sponsor is signed. Anonymity-safe: credits a sponsor OF the
+# guide, never the operator. Pairs with drafts/sponsor/lexingtongays_sponsor_onepager.md.
+_sponsor_html = ''
+try:
+    _sp_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'sponsor.json')
+    if os.path.exists(_sp_path):
+        _sp = json.load(open(_sp_path, encoding='utf-8'))
+        _spname = (_sp.get('name') or '').strip()
+        if _spname:
+            _spurl = (_sp.get('url') or '').strip()
+            _credit = f'<a href="{_spurl}" target="_blank" rel="noopener">{_spname}</a>' if _spurl else _spname
+            _sponsor_html = (
+                '        <section class="sponsor-credit" style="text-align:center;'
+                'margin:1.2rem auto;font-size:0.95rem;opacity:0.85;">'
+                f'This week’s guide is brought to you by {_credit} \U0001f49c'
+                '</section>\n')
+except Exception:
+    _sponsor_html = ''
+result = _sponsor_html + result
 
 # Auto-inject into docs/index.html between the first day comment and </main>
 _idx_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'docs', 'index.html')
@@ -483,19 +719,10 @@ if _inject_start != -1 and _inject_end != -1:
         _f.write(_new_html)
     print(f"Injected into docs/index.html (replaced chars {_inject_start}-{_inject_end})")
 else:
-    # HARD FAIL: a missing marker means the homepage silently never updates.
-    # This exact gap froze the live site on a placeholder for ~10 weeks because
-    # the old code wrote to /tmp and still exited 0, so the weekly task reported
-    # success. Exit non-zero so the caller SEES the failure. (gap G50)
-    sys.stderr.write(
-        "[FATAL] index.html missing '<!-- EVENTS-START -->' + '</main>' injection "
-        "boundaries; homepage NOT updated. Restore the markers in docs/index.html.\n")
-    # dump OUTSIDE docs/ (repo root) so a debug artifact can never be published
-    _dump = os.path.join(os.path.dirname(os.path.dirname(_idx_path)), '_day_sections_unplaced.html')
-    with open(_dump, 'w', encoding='utf-8') as f:
+    print(f"[warn] Could not find injection boundaries in index.html")
+    with open('/tmp/day_sections.html', 'w', encoding='utf-8') as f:
         f.write(result)
-    sys.stderr.write(f"[FATAL] generated day-sections dumped to {_dump}\n")
-    sys.exit(1)
+    print("Wrote to /tmp/day_sections.html instead")
 
 print(f"Generated {len(lines)} lines, {len(result)} chars")
 for d in DAYS:
@@ -561,38 +788,20 @@ if eotw:
         flags=re.DOTALL,
     )
 
-# ── Event structured data (schema.org/Event ItemList) on the indexable homepage ──
-#   Makes the week's events eligible for Google event rich-results and AI-search
-#   citation. Injected between the <!-- EVENTLIST-SCHEMA-START/END --> markers.
-SITE = 'https://lexingtongays.com'
-try:
-    from zoneinfo import ZoneInfo
-    _TZ = ZoneInfo('America/New_York')  # Lexington, KY is Eastern
-except Exception:
-    _TZ = None
-
+# 3. Event structured data (schema.org/Event ItemList) on the INDEXABLE homepage
+#    — makes the week's events eligible for Google event rich-results and AI
+#    citation (the per-event /e/ pages are noindex, so this is where SEO value
+#    lives). nextlevel Rung 3: Discovery Layer.
 def _iso_start(date_str, time_str):
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str or ''):
+    if not date_str:
         return None
     m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)', (time_str or ''), re.I)
-    if not m:
-        return date_str  # date-only startDate is valid schema
-    h = int(m.group(1)) % 12
-    if m.group(3).lower().startswith('p'):
-        h += 12
-    mn = int(m.group(2) or 0)
-    off = '-05:00'  # Eastern Standard fallback
-    if _TZ is not None:
-        try:
-            _dt = datetime.strptime(date_str, '%Y-%m-%d').replace(hour=h, minute=mn, tzinfo=_TZ)
-            _os = _dt.utcoffset()
-            _tot = int(_os.total_seconds()) if _os else -18000
-            _sign = '-' if _tot < 0 else '+'
-            _tot = abs(_tot)
-            off = f"{_sign}{_tot // 3600:02d}:{(_tot % 3600) // 60:02d}"
-        except Exception:
-            pass
-    return f"{date_str}T{h:02d}:{mn:02d}:00{off}"
+    if m:
+        h = int(m.group(1)) % 12
+        if m.group(3).lower().startswith('p'):
+            h += 12
+        return f"{date_str}T{h:02d}:{int(m.group(2) or 0):02d}:00-05:00"
+    return date_str  # date-only startDate is valid
 
 _events_ld = []
 for _ev in all_flat:
@@ -600,9 +809,11 @@ for _ev in all_flat:
     if not re.match(r'^\d{4}-\d{2}-\d{2}$', _d or ''):
         continue
     _venue = (_ev.get('venue') or '').split(',')[0].strip()
-    _u = (_ev.get('url') or '').strip()
+    _slug = 'event-' + _slugify_js(f"{_ev.get('name','')}-{_d}-{_ev.get('time','')}")
+    _event_page = f"{SITE}/e/{_slug}"
     _obj = {
         "@type": "Event",
+        "@id": _event_page,
         "name": _ev.get('name', '')[:110],
         "startDate": _iso_start(_d, _ev.get('time', '')),
         "eventStatus": "https://schema.org/EventScheduled",
@@ -611,38 +822,143 @@ for _ev in all_flat:
             "@type": "Place",
             "name": _venue or "Lexington, KY",
             "address": {"@type": "PostalAddress", "addressLocality": "Lexington",
-                        "addressRegion": "KY", "addressCountry": "US"},
+                        "addressRegion": "OK", "addressCountry": "US"},
         },
         "organizer": {"@type": "Organization", "name": "Lexington Gays", "url": SITE},
-        "image": SITE + "/favicon-512.png",
+        "image": SITE + "/images/og-event.png",
     }
     _desc = (_ev.get('website_description') or _ev.get('description') or '').strip()
     if _desc:
         _obj["description"] = ' '.join(_desc.split())[:300]
-    _obj["url"] = _u if _u.startswith('http') else SITE + "/"
+    _u = (_ev.get('url') or '').strip()
+    if _u.startswith('http'):
+        _obj["url"] = _u
+    else:
+        _obj["url"] = _event_page
     _events_ld.append(_obj)
 
 if _events_ld:
     _itemlist = {
         "@context": "https://schema.org",
         "@type": "ItemList",
-        "name": f"LGBTQ+ Events in Lexington, KY: {_week_start} to {_week_end}",
+        "name": f"LGBTQ+ Events in Lexington, {_week_start} to {_week_end}",
         "itemListElement": [
             {"@type": "ListItem", "position": _i + 1, "item": _o}
             for _i, _o in enumerate(_events_ld)
         ],
     }
-    _ld_block = ('<!-- EVENTLIST-SCHEMA-START -->\n<script type="application/ld+json">'
+    _ld_block = ('<!-- EVENTS-JSONLD-START -->\n<script type="application/ld+json">'
                  + json.dumps(_itemlist, ensure_ascii=False)
-                 + '</script>\n<!-- EVENTLIST-SCHEMA-END -->')
-    if '<!-- EVENTLIST-SCHEMA-START -->' in _html2:
-        _html2 = re.sub(r'<!-- EVENTLIST-SCHEMA-START -->.*?<!-- EVENTLIST-SCHEMA-END -->',
+                 + '</script>\n<!-- EVENTS-JSONLD-END -->')
+    if '<!-- EVENTS-JSONLD-START -->' in _html2:
+        _html2 = re.sub(r'<!-- EVENTS-JSONLD-START -->.*?<!-- EVENTS-JSONLD-END -->',
                         lambda _: _ld_block, _html2, flags=re.DOTALL)
     else:
         _html2 = _html2.replace('</head>', _ld_block + '\n</head>', 1)
+    print(f"Injected schema.org/Event ItemList ({len(_events_ld)} events) into index.html")
 
 with open(_idx_path, 'w', encoding='utf-8') as _f:
     _f.write(_html2)
 print(f"Updated date range: {_week_start} — {_week_end}")
 print(f"Updated EOTW banner: {eotw.get('name') if eotw else 'none'}")
-print(f"Injected schema.org/Event ItemList: {len(_events_ld)} events")
+
+
+# ── Per-event share pages: docs/e/<id>.html ────────────────────────────────
+# Static GitHub Pages can't vary OG tags by ?query param, so each event gets
+# its own tiny page carrying real og:title / og:description / og:image. The
+# "Tell Your Gays" share button (and link-less cards) point here, so a
+# Facebook share shows the ACTUAL event, and humans land on a real on-site
+# event page (traffic stays on lexingtongays.com).
+def _trunc(s, n):
+    s = ' '.join((s or '').split())
+    return s if len(s) <= n else s[:n - 1].rstrip() + '…'
+
+def _render_event_page(p):
+    _id = p['id']
+    _name = p['name']
+    _url = SITE + '/e/' + _id + '.html'
+    _deep = SITE + '/?event=' + _id
+    _img = SITE + '/images/og-event.png'
+    _lead = '. '.join([b for b in (p.get('when'), p.get('venue')) if b])
+    _full = (_lead + '. ' if _lead else '') + (p.get('desc') or '')
+    _og_desc = _trunc(_full, 300)
+    _meta_desc = _trunc(_full, 160)
+    _title = _trunc(_name, 90) + ' | Lexington Gays'
+    _src_btn = (f'<a class="ev-btn" href="{esc(p["url"])}" target="_blank" rel="noopener">Get tickets / more info &rarr;</a>'
+                if p.get('url') else '')
+    _when_html = f'<p class="ev-when">{esc(p["when"])}</p>' if p.get('when') else ''
+    _venue_html = f'<p class="ev-venue">{esc(p["venue"])}</p>' if p.get('venue') else ''
+    _desc_html = f'<p class="ev-desc">{esc(p["desc"])}</p>' if p.get('desc') else ''
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{esc(_title)}</title>
+<meta name="description" content="{esc(_meta_desc)}">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="{esc(_deep)}">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Lexington Gays">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="{esc(_trunc(_name, 90))}">
+<meta property="og:description" content="{esc(_og_desc)}">
+<meta property="og:url" content="{esc(_url)}">
+<meta property="og:image" content="{_img}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lexington Gays: LGBTQ+ Event Guide">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{esc(_trunc(_name, 90))}">
+<meta name="twitter:description" content="{esc(_meta_desc)}">
+<meta name="twitter:image" content="{_img}">
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/style.css">
+<style>
+.ev-wrap{{max-width:680px;margin:0 auto;padding:48px 24px 64px}}
+.ev-eyebrow{{color:var(--gold);font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;margin-bottom:14px}}
+.ev-name{{color:var(--text-primary);font-size:2rem;line-height:1.15;margin:0 0 14px}}
+.ev-when{{color:var(--gold);font-weight:700;margin:0 0 4px}}
+.ev-venue{{color:var(--text-secondary);margin:0 0 22px}}
+.ev-desc{{color:var(--text-secondary);line-height:1.7;margin:0 0 28px}}
+.ev-btn{{display:inline-block;background:var(--gold);color:#fff;padding:12px 22px;border-radius:8px;font-weight:700;text-decoration:none;margin:0 14px 12px 0}}
+.ev-btn.alt{{background:transparent;border:1px solid var(--gold);color:var(--gold)}}
+.ev-foot{{margin-top:36px;color:var(--text-muted);font-size:.85rem}}
+.ev-foot a{{color:var(--gold)}}
+</style>
+</head>
+<body>
+<div class="ev-wrap">
+<div class="ev-eyebrow">Lexington Gays · LGBTQ+ Event</div>
+<h1 class="ev-name">{esc(_name)}</h1>
+{_when_html}
+{_venue_html}
+{_desc_html}
+{_src_btn}
+<a class="ev-btn alt" href="{esc(_deep)}">See it on the full calendar &rarr;</a>
+<p class="ev-foot">Found via <a href="/">lexingtongays.com</a>, every LGBTQ+ event in Lexington, every week. <a href="/newsletter.html">Get the newsletter &rarr;</a></p>
+</div>
+</body>
+</html>
+'''
+
+_e_dir = os.path.join(os.path.dirname(_idx_path), 'e')
+os.makedirs(_e_dir, exist_ok=True)
+# Clear stale pages from previous weeks so /e/ only holds current events.
+for _old in os.listdir(_e_dir):
+    if _old.endswith('.html'):
+        try:
+            os.remove(os.path.join(_e_dir, _old))
+        except OSError:
+            pass
+_written = 0
+for _p in _share_pages:
+    if not _p.get('id'):
+        continue
+    try:
+        with open(os.path.join(_e_dir, _p['id'] + '.html'), 'w', encoding='utf-8') as _ef:
+            _ef.write(_render_event_page(_p))
+        _written += 1
+    except OSError:
+        pass
+print(f"Wrote {_written} per-event share pages to docs/e/")

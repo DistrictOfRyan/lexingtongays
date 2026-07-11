@@ -1,4 +1,4 @@
-"""Discover new LGBTQ+ event sources for the TulsaGays scraper.
+"""Discover new LGBTQ+ event sources for the LexingtonGays scraper.
 
 Two complementary discovery modes feed one candidate registry
 (self_improve/source_registry.py):
@@ -10,14 +10,14 @@ Two complementary discovery modes feed one candidate registry
    churches with craft clubs, theaters, etc. -- exactly what William wants).
 
 2. WEB DISCOVERY (the weekly scheduled task, using the WebSearch tool) -- the
-   reasoning pass that actively hunts for *net-new* Tulsa gay groups/orgs/pages
+   reasoning pass that actively hunts for *net-new* Lexington gay groups/orgs/pages
    that have never appeared in a scrape yet. ``SEARCH_SEEDS`` below is the
    query bank that task works through. The task writes its finds via
    ``source_registry.add_candidate``.
 
 The old Google-scraping discoverer was removed: requests-based Google scraping
 gets anti-bot blocked, and it explicitly skipped Facebook/Meetup/Eventbrite --
-which is where Tulsa's queer groups actually live.
+which is where Lexington's queer groups actually live.
 """
 
 import sys
@@ -90,22 +90,59 @@ SEED_TEMPLATES = {
         "{city} gay bar events calendar",
         "{city} burlesque cabaret queer",
     ],
+    # Family + youth (added 2026-07-01 per William: surface gay-family and
+    # kid-friendly events, not just 21+ bar nights). These pull the whole other
+    # half of the community the bar-heavy feed was missing.
+    "family_youth": [
+        "{city} LGBTQ family friendly Pride event",
+        "{city} drag queen story hour",
+        "{city} rainbow story time library",
+        "{city} queer parents family group",
+        "{city} LGBTQ youth group meeting",
+        "{city} gay straight alliance GSA event",
+        "{city} LGBTQ teen program",
+        "{city} PFLAG {city} meeting",
+        "{city} all ages queer event",
+        "{city} affirming family day LGBTQ",
+    ],
+    # Professional / food / film / civic (added 2026-07-01). Draws a different,
+    # broader gay crowd than nightlife: networking mixers, queer makers markets,
+    # film screenings, volunteer/activism days.
+    "pro_food_film_civic": [
+        "{city} LGBTQ professionals networking mixer",
+        "{city} gay chamber of commerce event",
+        "{city} queer makers market",
+        "{city} LGBTQ pop up market",
+        "{city} LGBTQ film festival screening",
+        "{city} queer sober social event",
+        "{city} gaymers group",
+        "{city} LGBTQ trivia night",
+        "{city} LGBTQ volunteer day",
+        "{city} queer potluck community dinner",
+    ],
 }
 
 # Per-city named-venue seeds (the things you only know by local knowledge).
 # Adding a new city = add a key here (optional). No code changes required.
 CITY_SPECIFIC_SEEDS = {
-    "Tulsa": [
-        "Fellowship Congregational Church Tulsa craft club events",
-        "All Souls Unitarian Tulsa events",
+    "Lexington": [
+        "Fellowship Congregational Church Lexington craft club events",
+        "All Souls Unitarian Lexington events",
         "Dennis R. Neill Equality Center calendar",
-        "Council Oak Men's Chorale Tulsa",
-        "Black Queer Tulsa events",
+        "Council Oak Men's Chorale Lexington",
+        "Black Queer Lexington events",
+        # Family / youth / broader-community named leads (2026-07-01).
+        "Oklahomans for Equality youth program events Lexington",
+        "PFLAG Lexington meeting",
+        "Lexington City-County Library rainbow story time",
+        "Freedom Oklahoma Lexington events",
+        "HotMess Sports Lexington kickball dodgeball",
+        "Lexington Pride family friendly events",
     ],
 }
 
 
-def seed_queries_for_city(city="Tulsa"):
+def seed_queries_for_city(city="Lexington"):
     """Return the category->queries dict for any city. City-agnostic engine."""
     out = {cat: [q.format(city=city) for q in tmpl] for cat, tmpl in SEED_TEMPLATES.items()}
     extras = CITY_SPECIFIC_SEEDS.get(city)
@@ -114,11 +151,11 @@ def seed_queries_for_city(city="Tulsa"):
     return out
 
 
-# Default Tulsa bank (back-compat: existing callers use SEARCH_SEEDS).
-SEARCH_SEEDS = seed_queries_for_city("Tulsa")
+# Default Lexington bank (back-compat: existing callers use SEARCH_SEEDS).
+SEARCH_SEEDS = seed_queries_for_city("Lexington")
 
 
-def all_seed_queries(city="Tulsa"):
+def all_seed_queries(city="Lexington"):
     """Flatten the seed bank for ``city`` into a single ordered list."""
     out = []
     for group in seed_queries_for_city(city).values():
@@ -159,9 +196,9 @@ def city_census_template(city, state):
 # ── Venue normalization ──────────────────────────────────────────────────────
 _ADDRESS_RE = re.compile(r",?\s*\d{2,5}\s+[NSEW]?\.?\s*\w.*$")  # ", 621 E 4th St ..."
 _JUNK_VENUES = {
-    "", "?", "tulsa", "tulsa, ok", "various locations", "various locations in tulsa",
+    "", "?", "lexington", "lexington, ok", "various locations", "various locations in lexington",
     "online", "tba", "tbd", "see website", "check listing for time",
-    "downtown tulsa", "meetup tulsa", "midtown tulsa", "various", "venue varies",
+    "downtown lexington", "meetup lexington", "midtown lexington", "various", "venue varies",
     "restaurant varies", "location varies", "to be announced", "n/a",
 }
 # Venue strings that are scraper/FB artifacts, not real venues.
@@ -172,12 +209,12 @@ def _venue_keyword(raw: str) -> str:
     """Reduce a raw venue string to a stable, trust-able keyword.
 
     "Dennis R. Neill Equality Center, 621 E 4th St" -> "dennis r. neill equality center"
-    "Shambhala Meditation Center of Tulsa"           -> "shambhala meditation center of tulsa"
+    "Shambhala Meditation Center of Lexington"           -> "shambhala meditation center of lexington"
     """
     if not raw:
         return ""
     v = raw.strip()
-    # Drop a trailing street address ("..., 621 E 4th St, Tulsa, OK")
+    # Drop a trailing street address ("..., 621 E 4th St, Lexington, KY")
     v = _ADDRESS_RE.sub("", v)
     # If still comma-laden, keep the part before the first comma (the name)
     if "," in v:
@@ -277,7 +314,7 @@ def discover_new_sources():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    print("=== TulsaGays Source Discovery: venue miner ===")
+    print("=== LexingtonGays Source Discovery: venue miner ===")
     finds = discover_new_sources()
     if finds:
         print(f"{len(finds)} new candidate(s):")

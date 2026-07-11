@@ -155,10 +155,17 @@ class LexingtonEagleScraper(BaseScraper):
 
 
 def scrape() -> List[Dict]:
-    """Module-level entry point."""
-    logger.info("[bars] Note: YBR, Majestic, Studio 66, Lexington House of Drag DNS-dead. Lexington Eagle only.")
-    scraper = LexingtonEagleScraper()
-    return scraper.safe_scrape()
+    """Module-level entry point.
+
+    2026-07-02 (gap G6): lexingtoneagle.com is a PARKED domain (JS redirect to
+    /lander, 114 bytes) - fetching it wastes ~50s per run and can never yield
+    events. Lexington Eagle coverage lives in scraper/instagram_orgs.py (usernames
+    lexingtoneagle / lexingtoneagleok). If the Eagle ever relaunches a real website,
+    delete this early return to re-enable LexingtonEagleScraper below.
+    """
+    logger.info("[bars] lexingtoneagle.com parked (2026-07); skipping web scrape - "
+                "IG coverage via instagram_orgs. YBR/Majestic/Studio 66/House of Drag DNS-dead.")
+    return []
 
 
 if __name__ == "__main__":

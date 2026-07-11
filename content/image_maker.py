@@ -7,6 +7,7 @@ NOT the HHHH brand — no burnt orange, no rainbow bars, no gold deco lines.
 import re
 import sys
 import os
+import json
 import textwrap
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
@@ -23,6 +24,14 @@ FONTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 SIZE = (1080, 1080)
 W, H = SIZE
 PAD = 96  # side padding
+
+# Layout warnings collected during a carousel render (text overflow / collisions).
+# save_carousel() writes these to layout_report.json so the pre-post preflight
+# can hard-block on any overlapping/overflowing slide.
+_LAYOUT_WARNINGS: List[Dict] = []
+
+def _record_layout_issue(slide: str, issue: str):
+    _LAYOUT_WARNINGS.append({"slide": slide, "issue": issue})
 
 # ── Lexington Gays Color Palette ──────────────────────────────────────────────
 BG            = (10, 10, 10)       # #0a0a0a — all slides
@@ -48,20 +57,38 @@ DAY_ACCENTS = {
 COVER_TAGLINES = [
     "Nothing to do in Lexington? Sounds like a straight person problem.",
     "There's only nothing to do in Lexington if you're boring.",
-    "If you're bored in Lexington, that's a you problem.",
+    "Bored in Lexington? That's a straight-people problem.",
     "You said there's nothing to do? Girl, keep up.",
     "Boring people say Lexington is boring. We stay booked.",
     "Lexington has nothing to do? You're just not invited to the right things.",
 ]
 
 SKIP_NAMES = {"event calendar", "events", "calendar", "untitled", "",
-              "map", "google calendar", "get your tickets", "upcoming events"}
+              "map", "google calendar", "get your tickets", "upcoming events",
+              "okeq health clinic"}
+
+# Substring patterns — any event whose name contains one of these is excluded.
+# Used by _is_garbage() in addition to the exact SKIP_NAMES match.
+SKIP_NAME_SUBSTRINGS = {
+    "zoom only",          # online-only events — never on slides
+    "hope testing",       # HIV testing clinic (privacy)
+    "okeq health",        # OKEQ health clinic (privacy)
+    "health clinic",      # any clinic variant (privacy)
+    "health outreach",    # outreach services (privacy)
+    "lambda unity",       # LGBTQ AA meeting (privacy)
+    "girl scout",         # troop meetings (kids)
+    "raise your spiritual iq",  # generic self-help
+    "sold out",           # already-unavailable events frustrate viewers
+    # NOTE: TTRPG, Shut Up & Write, scrabble, tabletop, bowling, midweek
+    # meditation, etc. are NOT skipped here — they're fine as filler events
+    # on day slides when the week is light on LGBTQ-headline programming.
+}
 
 FLAMINGO_LABELS = {
     1: "Mostly Straight",
     2: "Gay-Friendly",
     3: "Half Gay",
-    4: "Very Queer",
+    4: "Very LGBTQIA+",
     5: "Super Gay",
 }
 
@@ -126,10 +153,23 @@ def clean_text(text: str) -> str:
         r'\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF]+', '', text
     )
     text = text.replace('—', ',').replace('–', '-')  # em dash -> comma, en dash -> hyphen
+    # Strip raw markdown link syntax — scrapers occasionally leave it in
+    # descriptions like "**[Click here to learn more](https://...)**"
+    text = re.sub(r'\*+\[([^\]]+)\]\([^)]+\)\*+', r'\1', text)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'\*+([^*]+)\*+', r'\1', text)
     return re.sub(r'\s+', ' ', text).strip()
 
 
 _VENUE_JUNK = ('shared by ', 'posted by ', 'reposted by ', 'event by ')
+# Scraper button-text / truncation artifacts that are NOT venues (W28 slides
+# showed "@ Obtener entradas" and "@ mar"). Exact-match, lowercased.
+_VENUE_JUNK_EXACT = {
+    'obtener entradas', 'entradas', 'detalles', 'informacion', 'información',
+    'mas informacion', 'más información', 'get tickets', 'buy tickets',
+    'tickets', 'tickets & info', 'more info', 'more information', 'mar',
+    'tba', 'tbd', 'online', 'virtual',
+}
 # Known address fragments → display name. City-specific. Read from config.VENUE_NAME_MAP
 # with safe empty fallback for new-city scaffolds.
 _VENUE_NAME_MAP = getattr(config, "VENUE_NAME_MAP", {})
@@ -141,6 +181,8 @@ def clean_venue(raw: str) -> str:
         return ''
     low = v.lower()
     if any(low.startswith(j) for j in _VENUE_JUNK):
+        return ''
+    if low.rstrip('.!') in _VENUE_JUNK_EXACT:
         return ''
     # Map known address fragments to business names
     for addr, name in _VENUE_NAME_MAP.items():
@@ -236,6 +278,10 @@ _TWO_FL_KW = [
     'poetry', 'film', 'cinema', 'festival', 'cabaret', 'dance', 'live music',
     'cultural', 'brunch', 'karaoke', 'trivia', 'open mic', 'rooftop',
     'bingo', 'scavenger', 'sketch', 'craft', 'workshop', 'coffee',
+    # Known Lexington queer-friendly venues (consistent 2-flamingo rating regardless
+    # of whether scraper captured "festival" in name vs. just the event title)
+    'mother road market', 'guthrie green', 'magic city books', 'foolish things',
+    '66 days of fun',
 ]
 
 def _flamingo_score(ev: dict) -> int:
@@ -244,31 +290,52 @@ def _flamingo_score(ev: dict) -> int:
     source  = ev.get('source', '')
     content = f"{name} {venue}"
 
-    # 5 — drag/pride spectacle, explicitly queer identity events, or any event at a gay bar
+    try:
+        from eotw_selector import _is_lgbtq_strict as _strict_lgbtq
+        is_strict_lgbtq = _strict_lgbtq(ev)
+    except Exception:
+        is_strict_lgbtq = False
+
+    # 5 — explicit queer-identity events. Any event with explicit identity
+    # keywords in the NAME (not description) is by definition a queer event
+    # and earns the top rating.
+    _IDENTITY_KW = (
+        'queer', 'lgbtq', 'lgbtqia',
+        'gay', 'lesbian', 'sapphic', 'dyke',
+        'trans ', 'transgender', 'nonbinary', 'non-binary', 'two-spirit',
+        'drag ', 'drag show', 'drag brunch', 'drag king', 'drag queen',
+        'pride ', 'pride night', 'pride event', 'pride party',
+        'homo hotel', 'hhhh',
+    )
+    if any(kw in name for kw in _IDENTITY_KW):
+        return 5
+    # 5 — city-specific named queer events / any event at a known gay bar
     if any(kw in content for kw in _FIVE_FL_KW):
         return 5
     if any(bar in venue for bar in _GAY_BAR_VENUES):
         return 5
-    # 4 — explicitly LGBTQ-focused orgs/spaces/events, or queer-friendly venues
-    if any(kw in content for kw in _FOUR_FL_KW):
-        return 4
-    if any(v in venue for v in _FOUR_VENUES):
-        return 4
-    # Events from LGBTQ-community-organizing sources (signature event, equality center, etc.) score 4
-    if source in _LGBTQ_COMMUNITY_SOURCES:
-        return 4
-    # 3 — LGBTQ community-organized but not explicitly identity events (community subset)
-    _community_subset = {s for s in _LGBTQ_COMMUNITY_SOURCES if s in ("recurring", "manual")}
-    if source in _community_subset and any(kw in content for kw in _COMMUNITY_KW):
-        return 3
-    # 3 — specific welcoming events that score above generic arts/culture
+
+    # 4 — trusted LGBTQ org or queer-friendly venue (strict LGBTQ gate prevents
+    # Lexington Zoo / Mother Road from inheriting OKEQ-tier rating via description fuzz)
+    if is_strict_lgbtq:
+        if any(kw in content for kw in _FOUR_FL_KW):
+            return 4
+        if any(v in venue for v in _FOUR_VENUES):
+            return 4
+        if source in _LGBTQ_COMMUNITY_SOURCES and source != 'manual':
+            return 4
+
+    # 3 — affirming spaces: church/meditation/cultural venues that publicly welcome LGBTQ
     if any(kw in content for kw in _THREE_FL_KW):
         return 3
-    # 2 — gay-friendly arts/culture/entertainment
+
+    # 2 — gay-friendly cultural / arts / community events at non-affirming-specific venues
+    # (Mother Road Market, Magic City Books, Guthrie Green, etc.)
     if any(kw in content for kw in _TWO_FL_KW):
         return 2
-    # 2 — default; 1 flamingo is reserved for truly exclusionary/corporate-only events
-    return 2
+
+    # 1 — truly generic events with no LGBTQ angle (Memorial Day Run, suburban events)
+    return 1
 
 
 def format_date(date_str: str) -> str:
@@ -383,12 +450,57 @@ def _draw_centered(draw: ImageDraw.Draw, text: str, y: int,
     return y + (bbox[3] - bbox[1])
 
 
+def _split_sentences(text: str) -> List[str]:
+    """Split text into sentences, keeping the terminating punctuation."""
+    import re as _re
+    parts = _re.split(r"(?<=[.!?])\s+", clean_text(text).strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _fit_sentences(draw: ImageDraw.Draw, text: str,
+                   font: ImageFont.FreeTypeFont, max_px: int,
+                   max_lines: int) -> str:
+    """Return the longest run of WHOLE sentences from text that wraps to
+    <= max_lines. Never cuts mid-sentence. If even the first sentence is
+    too long, return that first sentence trimmed to whole words with a
+    clean trailing ellipsis (still never mid-word)."""
+    sentences = _split_sentences(text)
+    if not sentences:
+        return ""
+    kept = ""
+    for s in sentences:
+        candidate = (kept + " " + s).strip()
+        if len(_wrap_to_width(draw, candidate, font, max_px)) <= max_lines:
+            kept = candidate
+        else:
+            break
+    if kept:
+        return kept
+    # First sentence alone overflows — trim to whole words that fit, add ellipsis.
+    words = sentences[0].split()
+    trimmed = ""
+    for w in words:
+        candidate = (trimmed + " " + w).strip()
+        if len(_wrap_to_width(draw, candidate + "...", font, max_px)) <= max_lines:
+            trimmed = candidate
+        else:
+            break
+    return (trimmed + "...") if trimmed else sentences[0]
+
+
 def _draw_wrapped(draw: ImageDraw.Draw, text: str, y: int,
                   font: ImageFont.FreeTypeFont, fill: str,
                   max_px: int = W - PAD * 2,
                   max_lines: int = 3, line_gap: int = 6) -> int:
-    """Draw word-wrapped centered text. Returns y after last line."""
-    lines = _wrap_to_width(draw, text, font, max_px)[:max_lines]
+    """Draw word-wrapped centered text. Returns y after last line.
+
+    When the text is too long for max_lines, trims back to whole sentences
+    (never a mid-sentence ellipsis) via _fit_sentences."""
+    all_lines = _wrap_to_width(draw, text, font, max_px)
+    if len(all_lines) > max_lines:
+        text = _fit_sentences(draw, text, font, max_px, max_lines)
+        all_lines = _wrap_to_width(draw, text, font, max_px)
+    lines = all_lines[:max_lines]
     for line in lines:
         y = _draw_centered(draw, line, y, font, fill)
         y += line_gap
@@ -418,7 +530,10 @@ def _watermark(draw: ImageDraw.Draw):
 
 def _is_garbage(event: Dict) -> bool:
     name = clean_text(event.get("name", "")).lower().strip()
-    return name in SKIP_NAMES or len(name) < 3
+    if name in SKIP_NAMES or len(name) < 3:
+        return True
+    # Also exclude events containing any skip substring (recurring clinics, zoom-only, etc.)
+    return any(sub in name for sub in SKIP_NAME_SUBSTRINGS)
 
 
 def _parse_event_time(time_str: str) -> int:
@@ -461,7 +576,8 @@ def _parse_event_time(time_str: str) -> int:
 def make_cover_slide(post_type: str, date_range: str,
                      featured_event: Optional[Dict] = None,
                      tagline: Optional[str] = None,
-                     upcoming_event: Optional[Dict] = None) -> Image.Image:
+                     upcoming_event: Optional[Dict] = None,
+                     featured_events: Optional[List[Dict]] = None) -> Image.Image:
     """Slide 1: Cover + Event of the Week.
     Top ~half: LEXINGTON GAYS branding + date.
     Bottom half: featured event of the week with name, time, venue, pitch.
@@ -493,7 +609,7 @@ def make_cover_slide(post_type: str, date_range: str,
 
     # ── Top branding block ────────────────────────────────────────────────
     y = 28
-    y = _draw_centered(draw, "YOUR QUEER WEEK IN LEXINGTON", y, f_week_label, WHITE)
+    y = _draw_centered(draw, "YOUR LGBTQIA+ WEEK IN LEXINGTON", y, f_week_label, WHITE)
     y += 6
     bar_accent_w = 180
     draw.rectangle([(W - bar_accent_w) // 2, y, (W + bar_accent_w) // 2, y + 3], fill=NEON_PINK)
@@ -522,14 +638,66 @@ def make_cover_slide(post_type: str, date_range: str,
     _thin_divider(draw, y, margin=PAD, color="#333333")
     y += 34
 
-    # ── Event of the Week ─────────────────────────────────────────────────
-    if featured_event and not _is_garbage(featured_event):
+    # ── Event(s) of the Week ──────────────────────────────────────────────
+    _evlist = [e for e in (featured_events or []) if e and not _is_garbage(e)]
+    if not _evlist and featured_event and not _is_garbage(featured_event):
+        _evlist = [featured_event]
+    if len(_evlist) >= 2:
+        # Two Events of the Week — compact stacked cards (William's "both on
+        # the home page"). Sized to fit two cards above the footer; the flamingo
+        # legend is suppressed in this mode. Generous line_gap = no glyph overlap.
+        y = _draw_centered(draw, "TWO EVENTS OF THE WEEK", y, f_eotw_label, NEON_PINK)
+        y += 10
+        _f_name_lg = _font("poiret", 46)   # short names
+        _f_name_md = _font("poiret", 36)   # medium
+        _f_name_sm = _font("poiret", 30)   # long names (e.g. Council Oak Jukebox)
+        for _ev in _evlist[:2]:
+            _nm = clean_text(_ev.get("name", ""))
+            _vn = clean_venue(_ev.get("venue", ""))
+            _tm = _ev.get("time", "")
+            _dt = format_date(_ev.get("date", ""))
+            _pitch = (_ev.get("slide_description") or _ev.get("description")
+                      or _ev.get("website_description", ""))
+            _btop = y
+            _yy = y + 12
+            try:
+                _wl = datetime.strptime(_ev.get("date", ""), "%Y-%m-%d").strftime("%A").upper()
+            except Exception:
+                _wl = ""
+            if _wl:
+                _yy = _draw_centered(draw, _wl, _yy, f_eotw_label, WHITE); _yy += 12
+            _nf = _f_name_lg if len(_nm) <= 22 else (_f_name_md if len(_nm) <= 40 else _f_name_sm)
+            _yy = _draw_wrapped(draw, _nm, _yy, _nf, WHITE, max_px=W - 150, max_lines=2, line_gap=12)
+            _yy += 10
+            if _vn:
+                _yy = _draw_wrapped(draw, f"@ {_vn}", _yy, f_eotw_venue, NEON_PINK,
+                                    max_px=W - 160, max_lines=1, line_gap=4); _yy += 6
+            _dl = f"{_dt}  ·  {_tm}" if _dt and _tm else (_dt or _tm)
+            if _dl:
+                _yy = _draw_centered(draw, _dl, _yy, f_eotw_dt, GRAY); _yy += 6
+            _yy = _draw_flamingo_score(draw, _flamingo_score(_ev), W // 2, _yy, size=16)
+            if _pitch:
+                _yy = _draw_wrapped(draw, _pitch, _yy, f_eotw_pitch, LIGHT_GRAY,
+                                    max_px=W - 170, max_lines=2, line_gap=6); _yy += 4
+            _url = _ev.get("url", "")
+            if _url:
+                _du = re.sub(r'^https?://', '', _url).split("?")[0]
+                if len(_du) > 42: _du = _du[:42] + "..."
+                _lbl = "MORE INFO" if _is_signature_event({"name": _nm}) else "TICKETS"
+                _yy = _draw_centered(draw, f"{_lbl}  →  {_du}", _yy,
+                                     _font("segoe-semi", 19), NEON_PINK)
+            draw.rounded_rectangle([PAD - 22, _btop, W - PAD + 22, _yy + 12],
+                                   radius=12, outline=NEON_PINK, width=3)
+            y = _yy + 10
+    elif featured_event and not _is_garbage(featured_event):
         ev_name  = clean_text(featured_event.get("name", ""))
         ev_time  = featured_event.get("time", "")
         ev_venue = clean_venue(featured_event.get("venue", ""))
-        ev_desc  = (featured_event.get("website_description")
-                    or featured_event.get("slide_description")
-                    or featured_event.get("description", ""))
+        # Cover uses the SHORT pitch (the long website_description belongs on the
+        # website and overflows the cover's EOTW box / flamingo legend).
+        ev_desc  = (featured_event.get("slide_description")
+                    or featured_event.get("description")
+                    or featured_event.get("website_description", ""))
         ev_date  = format_date(featured_event.get("date", ""))
 
         eotw_box_top = y - 10
@@ -583,6 +751,16 @@ def make_cover_slide(post_type: str, date_range: str,
         y = _draw_wrapped(draw, tagline, y, f_eotw_pitch, LIGHT_GRAY,
                           max_px=W - 160, max_lines=3, line_gap=8)
 
+    # Overflow guard: in dual mode there is no legend (footer bar at H-100); in
+    # single mode the flamingo legend starts at H-255. If EOTW content runs past
+    # the safe limit, the cards collide with the legend/footer — record it so the
+    # preflight hard-blocks posting.
+    _safe_bottom = (H - 105) if len(_evlist) >= 2 else (H - 255)
+    if y > _safe_bottom:
+        _record_layout_issue("cover",
+            f"Event-of-the-Week content bottom {int(y)}px exceeds safe limit "
+            f"{_safe_bottom}px ({'dual' if len(_evlist) >= 2 else 'single'} mode) — text overlap risk")
+
     # ── Upcoming Featured Event ───────────────────────────────────────────────
     cover_footer_top = H - 76  # keep COMING UP content above the footer bar
     if upcoming_event and not _is_garbage(upcoming_event):
@@ -635,10 +813,12 @@ def make_cover_slide(post_type: str, date_range: str,
                 y = _draw_wrapped(draw, ticket_line, y, f_upc_link, NEON_PINK,
                                   max_px=W - 80, max_lines=2, line_gap=4)
 
-    # Gay scale legend — larger, centered, fixed above footer bar
-    scale_top = H - 255
-    _thin_divider(draw, scale_top, margin=PAD, color="#2a2a2a")
-    _draw_gay_scale(draw, scale_top + 12, font_size=16)
+    # Gay scale legend — fixed above footer bar. Suppressed in dual-EOTW mode,
+    # where two event cards need the full height (no room for the legend).
+    if len(_evlist) < 2:
+        scale_top = H - 255
+        _thin_divider(draw, scale_top, margin=PAD, color="#2a2a2a")
+        _draw_gay_scale(draw, scale_top + 12, font_size=16)
 
     # Footer — prominent LEXINGTONGAYS.COM with "hundreds of events" call-to-action
     _pink_bar(draw, H - 100, height=2)
@@ -802,7 +982,8 @@ def _measure_events_height(draw, all_events: List[Dict], header_y: int,
         y += 42  # emoji row + label text + gaps
         # Pitch
         if ev_pitch:
-            pitch_list = _wrap_to_width(draw, ev_pitch, f_pitch, W - PAD * 2 - 40)[:pitch_max_lines]
+            _fit = _fit_sentences(draw, ev_pitch, f_pitch, W - PAD * 2 - 40, pitch_max_lines)
+            pitch_list = _wrap_to_width(draw, _fit, f_pitch, W - PAD * 2 - 40)[:pitch_max_lines]
             for pl in pitch_list:
                 y += _text_height(draw, pl, f_pitch) + 4
             y += 4
@@ -832,13 +1013,14 @@ def make_day_slide(day_name: str, events: List[Dict],
         all_events.extend([e for e in also_happening if not _is_garbage(e)])
     all_events = all_events[:4]  # cap at 4 events — guarantees no overflow
 
-    # The first event in the original list is the featured/highlighted one.
-    # Sort all events chronologically, then find where the featured event landed.
+    # The first event is the featured/highlighted one (pink box at top).
+    # Preserve the upstream order from main.py's tier sort — LGBTQ events
+    # must stay grouped at the top, never split apart by a community filler
+    # event that happens to start earlier in the day.
     featured_event_obj = all_events[0] if all_events else None
-    all_events = sorted(all_events, key=lambda e: _parse_event_time(e.get("time", "")))
-    feat_idx = next(
-        (i for i, e in enumerate(all_events) if e is featured_event_obj), 0
-    )
+    rest = all_events[1:]  # tier-sorted upstream; do NOT re-sort by time
+    all_events = ([featured_event_obj] + rest) if featured_event_obj else rest
+    feat_idx = 0
 
     n      = len(all_events)
     accent = DAY_ACCENTS.get(day_name, GRAY)
@@ -961,7 +1143,8 @@ def make_day_slide(day_name: str, events: List[Dict],
 
             # Pitch
             if ev_pitch and y < content_bottom:
-                pitch_list = _wrap_to_width(draw, ev_pitch, f_pitch, W - PAD * 2 - 40)[:pitch_max_lines]
+                _fit = _fit_sentences(draw, ev_pitch, f_pitch, W - PAD * 2 - 40, pitch_max_lines)
+                pitch_list = _wrap_to_width(draw, _fit, f_pitch, W - PAD * 2 - 40)[:pitch_max_lines]
                 for pl in pitch_list:
                     if y >= content_bottom:
                         break
@@ -996,6 +1179,17 @@ def make_day_slide(day_name: str, events: List[Dict],
                 outline=NEON_PINK,
                 width=3
             )
+            # "TOP PICK" tag centered on the box's top border so the highlight
+            # reads as a deliberate editorial pick, not an arbitrary first-row
+            # box (William 2026-07-06).
+            _tag = "TOP PICK"
+            _f_tag = _font("segoe", 20)
+            _tw = _text_width(draw, _tag, _f_tag)
+            _th = _text_height(draw, _tag, _f_tag)
+            _tx = (W - _tw) // 2
+            _ty = y_first_start - _th - 6   # fully above the border, clear of the title
+            draw.rectangle([_tx - 14, _ty - 3, _tx + _tw + 14, _ty + _th + 5], fill="#000000")
+            draw.text((_tx, _ty), _tag, font=_f_tag, fill=NEON_PINK)
 
     # ── Footer ── pink divider then "X more events today" CTA ───────────────
     footer_y = H - footer_h + 8
@@ -1079,11 +1273,24 @@ def create_carousel(events_by_category: Dict[str, List[Dict]],
                     logo_path: Optional[str] = None,
                     events_by_day: Optional[Dict[str, List[Dict]]] = None,
                     featured_event: Optional[Dict] = None,
-                    upcoming_event: Optional[Dict] = None) -> List[Image.Image]:
-    """Build full 10-slide carousel: Cover → Featured → Mon-Sun → CTA."""
+                    upcoming_event: Optional[Dict] = None,
+                    featured_events: Optional[List[Dict]] = None) -> List[Image.Image]:
+    """Build full carousel: Cover → (extra Featured slides) → Mon-Sun → CTA.
+
+    featured_events: optional list of 1+ Events of the Week. The first leads the
+    cover; any additional ones each get their own featured slide and lead their
+    own day. Back-compatible: if omitted, falls back to [featured_event]."""
     slides: List[Image.Image] = []
+    _LAYOUT_WARNINGS.clear()   # fresh layout-warning collection per render
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
                     "Friday", "Saturday", "Sunday"]
+
+    # Normalize the featured-event list (manual two-EOTW override aware).
+    _featured_list = [e for e in (featured_events or []) if e and not _is_garbage(e)]
+    if not _featured_list and featured_event and not _is_garbage(featured_event):
+        _featured_list = [featured_event]
+    if _featured_list:
+        featured_event = _featured_list[0]
 
     # Resolve featured event — priority order (configured per-city):
     # 1. Signature event (config.SIGNATURE_EVENT) — always wins if this week
@@ -1188,26 +1395,34 @@ def create_carousel(events_by_category: Dict[str, List[Dict]],
                     elif all_events_flat:
                         eotw = all_events_flat[0]
 
-    # Slide 1: Cover + Event of the Week combined
-    slides.append(make_cover_slide(post_type, date_range, featured_event=eotw,
-                                   upcoming_event=upcoming_event))
+    # The full set of events to feature/promote (cover + any extra EOTW).
+    _promote = _featured_list if _featured_list else ([eotw] if eotw else [])
 
-    # Slides 3-9: One per day
+    # Slide 1: Cover — both Events of the Week render on the cover itself
+    # (William's "both on the home page"), so no separate featured slides.
+    slides.append(make_cover_slide(post_type, date_range, featured_event=eotw,
+                                   upcoming_event=upcoming_event,
+                                   featured_events=_promote))
+
+    # Slides per day
     if events_by_day:
         for day in days_of_week:
             day_events = [e for e in events_by_day.get(day, [])
                           if not _is_garbage(e)]
-            # Ensure EOTW appears first on its own day slide
-            if eotw and day_events:
-                eotw_in_day = [e for e in day_events if e is eotw or (
-                    e.get("name") == (eotw.get("name") if eotw else None)
-                    and e.get("date") == (eotw.get("date") if eotw else None)
+            # Ensure each featured/EOTW event leads its own day slide.
+            for feat in _promote:
+                if not feat or not day_events:
+                    continue
+                feat_in_day = [e for e in day_events if e is feat or (
+                    e.get("name") == feat.get("name")
+                    and e.get("date") == feat.get("date")
                 )]
-                if eotw_in_day:
-                    day_events = [eotw_in_day[0]] + [
-                        e for e in day_events if e is not eotw_in_day[0]
-                        and not (e.get("name") == eotw_in_day[0].get("name")
-                                 and e.get("date") == eotw_in_day[0].get("date"))
+                if feat_in_day:
+                    lead = feat_in_day[0]
+                    day_events = [lead] + [
+                        e for e in day_events if e is not lead
+                        and not (e.get("name") == lead.get("name")
+                                 and e.get("date") == lead.get("date"))
                     ]
             slides.append(make_day_slide(day, day_events[:3], total_day_events=len(day_events)))
     else:
@@ -1237,7 +1452,110 @@ def save_carousel(images: List[Image.Image], output_dir: str,
         path = os.path.join(output_dir, f"{prefix}_{i:02d}.png")
         img.save(path, "PNG", optimize=True)
         paths.append(path)
+    # Persist any layout/overflow warnings collected during this render so the
+    # pre-post preflight can hard-block on overlapping slides. Write atomically
+    # (temp + replace) so a concurrent read/hook never sees a half-written file.
+    try:
+        _payload = json.dumps({"warnings": list(_LAYOUT_WARNINGS)}, indent=2, ensure_ascii=False)
+        _final = os.path.join(output_dir, "layout_report.json")
+        _tmp = _final + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as _lf:
+            _lf.write(_payload)
+        os.replace(_tmp, _final)
+    except Exception:
+        pass
     return paths
+
+
+def make_engagement_slide(
+    headline: str,
+    body: str,
+    post_type: str = "community",   # "community" | "lastminute" | "spotlight"
+    subhead: Optional[str] = None,
+) -> Image.Image:
+    """Single 1080x1080 branded image for mid-week engagement posts.
+
+    post_type controls accent color:
+      community  -> Tuesday lavender
+      lastminute -> Wednesday gold
+      spotlight  -> Thursday rose
+    """
+    accent_map = {
+        "community":  DAY_ACCENTS["Tuesday"],    # #C0AEFF lavender
+        "lastminute": DAY_ACCENTS["Wednesday"],  # #FFD060 warm gold
+        "spotlight":  DAY_ACCENTS["Thursday"],   # #F0A0B0 rose
+    }
+    type_label_map = {
+        "community":  "COMMUNITY",
+        "lastminute": "LAST MINUTE",
+        "spotlight":  "SPOTLIGHT",
+    }
+    accent  = accent_map.get(post_type, NEON_PINK)
+    label   = type_label_map.get(post_type, "LEXINGTON GAYS")
+
+    img  = Image.new("RGB", SIZE, BG)
+    draw = ImageDraw.Draw(img)
+
+    f_label   = _font("segoe-semi", 32)
+    f_lexington   = _font("poiret", 88)
+    f_gays    = _font("poiret", 88)
+    f_head    = _font("poiret", 58)
+    f_sub     = _font("segoe-semi", 26)
+    f_body    = _font("segoe", 26)
+    f_footer  = _font("poiret", 28)
+
+    # top pink bar
+    _pink_bar(draw, 0, height=4)
+
+    y = 32
+
+    # TYPE LABEL (e.g. "COMMUNITY" or "LAST MINUTE")
+    draw.rectangle([(W - 320) // 2, y, (W + 320) // 2, y + 48],
+                   fill=accent)
+    label_w = _text_width(draw, label, f_label)
+    draw.text(((W - label_w) // 2, y + 8), label, font=f_label,
+              fill=BG)
+    y += 64
+
+    # LEXINGTON / GAYS branding
+    y = _draw_centered(draw, "LEXINGTON", y, f_lexington, WHITE)
+    y += 2
+    y = _draw_centered(draw, "GAYS", y, f_gays, NEON_PINK)
+    y += 12
+
+    # thin accent bar
+    bar_w = 200
+    draw.rectangle([(W - bar_w) // 2, y, (W + bar_w) // 2, y + 3],
+                   fill=accent)
+    y += 24
+
+    # HEADLINE
+    y = _draw_wrapped(draw, clean_text(headline), y, f_head, WHITE,
+                      max_px=W - PAD * 2, max_lines=3, line_gap=8)
+    y += 16
+
+    # Optional subhead
+    if subhead:
+        y = _draw_wrapped(draw, clean_text(subhead), y, f_sub, accent,
+                          max_px=W - PAD * 2, max_lines=2, line_gap=6)
+        y += 12
+
+    # Divider
+    _thin_divider(draw, y)
+    y += 20
+
+    # BODY TEXT
+    y = _draw_wrapped(draw, clean_text(body), y, f_body, LIGHT_GRAY,
+                      max_px=W - PAD * 2, max_lines=6, line_gap=6)
+
+    # FOOTER
+    _pink_bar(draw, H - 4, height=4)
+    footer_text = "lexingtongays.com"
+    fw = _text_width(draw, footer_text, f_footer)
+    draw.text(((W - fw) // 2, H - 52), footer_text, font=f_footer,
+              fill=GRAY)
+
+    return img
 
 
 # ── CLI test ──────────────────────────────────────────────────────────────
@@ -1326,8 +1644,8 @@ if __name__ == "__main__":
              "url": "lexingtoneagle.com",
              "date": "2026-04-10"},
             {"name": "Yellow Brick Road Weekend", "time": "9:00 PM",
-             "venue": "Yellow Brick Road, 3314 E 32nd Pl",
-             "description": "Lexington's LGBTQ+ bar is open and the dance floor is yours. Friday vibes.",
+             "venue": "Yellow Brick Road, 2630 E 15th St",
+             "description": "Lexington's only lesbian bar is open and everyone's welcome. The dance floor is yours. Friday vibes.",
              "url": "facebook.com/ybrlexington",
              "date": "2026-04-10"},
         ],
@@ -1343,8 +1661,8 @@ if __name__ == "__main__":
              "url": "lexingtonpac.com",
              "date": "2026-04-11"},
             {"name": "Yellow Brick Road Saturday Night", "time": "9:00 PM",
-             "venue": "Yellow Brick Road, 3314 E 32nd Pl",
-             "description": "Saturday at YBR. The main event. Full bar, dancing, and your people.",
+             "venue": "Yellow Brick Road, 2630 E 15th St",
+             "description": "Saturday at YBR, Lexington's only lesbian bar and everyone's welcome. The main event. Full bar, dancing, and your people.",
              "url": "facebook.com/ybrlexington",
              "date": "2026-04-11"},
         ],

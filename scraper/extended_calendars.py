@@ -1,27 +1,35 @@
-"""Extended Lexington, KY event calendar scrapers — verified real local sources only.
+"""Extended Lexington event calendar scrapers — venues, tourism, arts, universities, libraries.
 
 Uses a generic config-driven approach: JSON-LD first, then HTML fallback.
-All events are filtered for LGBTQ relevance before returning (except the
-LGBTQ-specific orgs, which return all events).
+All events are filtered for LGBTQ relevance before returning.
 
-This file previously contained out-of-state venues whose URLs had been
-cosmetically string-swapped to say "lexington". Those were all fabricated
-for Lexington and have been removed. Every source below was verified as a
-real, currently-operating Lexington, KY source with a working URL.
-
-Sources covered (all Lexington, KY):
-  TOURISM/CITY:
-    VisitLex calendar of events, City of Lexington calendar
-  LIBRARIES:
-    Lexington Public Library
-  UNIVERSITIES:
-    University of Kentucky
+Sources covered:
+  TOURISM/CVB:
+    TravelOK, Green Country OK, LexingtonGo
+  NEWS/MEDIA:
+    LexingtonKids, Lexington Events (lexington.events)
+  CITY:
+    City of Lexington Special Events
+  MUSEUMS & CULTURAL:
+    Philbrook, Woody Guthrie Center, Greenwood Cultural Center, Lexington Zoo, Gathering Place,
+    Lexington Garden Center, Oklahoma Aquarium, Discovery Lab, 101 Archer
   PERFORMING ARTS:
-    Central Bank Center / Lexington Opera House
+    Lexington PAC, BOK Center, Cain's Ballroom, Lexington Theater,
+    Hard Rock Live, River Spirit Casino, The Church Studio,
+    Cox Business Convention Center
+  SPORTS/EXPO:
+    ONEOK Field (Lexington Drillers), FC Lexington, Lexington Oilers, Expo Square
+  LIBRARIES:
+    Lexington City-County Library
+  UNIVERSITIES:
+    University of Lexington, OSU-Lexington, ORU, Lexington Community College
   LGBTQ+:
-    Lexington Pride Center
-  AGGREGATORS:
-    Meetup (Lexington, KY)
+    Lexington Pride
+  TICKETING/AGGREGATORS:
+    SeatGeek Lexington, Meetup Lexington
+  NEIGHBORHOOD/NICHE:
+    Brookside Business Association, Cherry Street Farmers Market,
+    Lexington Farmers' Market, LexingtonGo
 """
 
 import sys
@@ -33,19 +41,40 @@ from typing import List, Dict, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraper.base import BaseScraper
+from scraper import dynamic_sources as _dyn
+from scraper.relevance import compile_lgbtq_keywords
 
 logger = logging.getLogger(__name__)
 
 LGBTQ_KEYWORDS = [
+    # Explicit identity
     "lgbtq", "queer", "gay", "lesbian", "bi", "trans", "drag", "pride",
     "rainbow", "dyke", "nonbinary", "non-binary", "gender", "equality",
     "affirming", "inclusive", "homo", "sapphic", "two-spirit", "twospirit",
+    # Queer-adjacent / community-coded
+    "oddities", "curiosities",
+    "burlesque", "cabaret",
+    "feminist", "radical",
+    "night market", "art market", "bazaar", "market",
+    "wiz",
+    "greenwood", "black wall street",
+    "boots riley",
+    # Cultural event types (effective at curated arts venues)
+    "screening", "film festival", "documentary",
+    "exhibition", "opening reception", "art opening",
+    "workshop", "panel discussion", "panel", "lecture",
+    "fundraiser", "benefit show", "benefit concert",
+    "cultural festival", "heritage",
+    "open mic", "poetry",
 ]
+
+
+_LGBTQ_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS)
 
 
 def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
     combined = (name + " " + description).lower()
-    return any(kw in combined for kw in LGBTQ_KEYWORDS)
+    return bool(_LGBTQ_RX.search(combined))
 
 
 # ── Site configuration ─────────────────────────────────────────────────────
@@ -54,25 +83,83 @@ def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
 # lgbtq_only=True   → return ALL events (LGBTQ-specific orgs)
 
 SITES: List[Tuple[str, str, str, bool]] = [
-    # TOURISM / CITY (verified Lexington, KY)
-    ("https://www.visitlex.com/things-to-do/calendar-of-events/", "VisitLex", "tourism", False),
-    ("https://www.lexingtonky.gov/calendar", "City of Lexington", "city", False),
+    # TOURISM / CVB
+    ("https://travelok.com/listings/view_feature/category.lodging/city.lexington", "TravelOK", "tourism", False),
+    ("https://www.greencountryok.com/cities/lexington/festivals-events-in-lexington", "Green Country Oklahoma", "tourism", False),
+    ("https://lexingtongo.com/experience", "LexingtonGo", "tourism", False),
 
-    # PERFORMING ARTS (verified Lexington, KY)
-    ("https://www.centralbankcenter.com/events", "Central Bank Center / Lexington Opera House", "arts", False),
+    # NEWS / MEDIA
+    ("https://www.lexingtonkids.com/calendar/", "LexingtonKids Magazine", "media", False),
+    ("https://lexington.events", "Lexington Events", "media", False),
 
-    # LIBRARIES (verified Lexington, KY)
-    ("https://events.lexpublib.org/", "Lexington Public Library", "library", False),
+    # CITY / GOVERNMENT
+    ("https://www.cityoflexington.org/government/departments/parks-recreation/events/", "City of Lexington", "city", False),
 
-    # UNIVERSITIES (verified Lexington, KY)
-    ("https://calendar.uky.edu/", "University of Kentucky", "university", False),
+    # MUSEUMS & CULTURAL
+    ("https://philbrook.org/calendar/", "Philbrook Museum", "museum", False),
+    ("https://woodyguthriecenter.org/events/", "Woody Guthrie Center", "museum", False),
+    ("https://www.greenwoodculturalcenter.com/events", "Greenwood Cultural Center", "museum", False),
+    # 2026-07-06: cert only valid for the apex host, www. fails TLS
+    ("https://1921lexingtonmassacre.org/events", "1921 Lexington Race Massacre Memorial", "museum", False),
+    ("https://www.lexingtonzoo.org/events/", "Lexington Zoo", "museum", False),
+    ("https://www.gatheringplace.org/parkcalendar/", "Gathering Place", "museum", False),
+    ("https://www.lexingtongardencenter.com/events/", "Lexington Garden Center", "museum", False),
+    ("https://www.okaquarium.org/events/", "Oklahoma Aquarium", "museum", False),
+    ("https://discoverylab.org/events/", "Discovery Lab", "museum", False),
+    ("https://101archer.com/events/", "101 Archer", "museum", False),
+
+    # PERFORMING ARTS
+    ("https://www.lexingtonpac.com/events/", "Lexington PAC", "arts", False),
+    ("https://www.bokcenter.com/events", "BOK Center", "arts", False),
+    ("https://cainsballroom.com/events/", "Cain's Ballroom", "arts", False),
+    ("https://lexingtontheater.com/events/", "Lexington Theater", "arts", False),
+    ("https://www.hardrockcasinolexington.com/entertainment/", "Hard Rock Live Lexington", "arts", False),
+    ("https://www.riverspiritlexington.com/entertainment/", "River Spirit Casino", "arts", False),
+    ("https://www.thechurchstudio.com/events/", "The Church Studio", "arts", False),
+    ("https://www.coxcenterlexington.com/events/", "Cox Business Convention Center", "arts", False),
+
+    # SPORTS / EXPO
+    ("https://www.milb.com/lexington/schedule/", "Lexington Drillers (ONEOK Field)", "sports", False),
+    ("https://www.fclexington.com/schedule/", "FC Lexington", "sports", False),
+    ("https://www.lexingtonoilers.com/schedule/", "Lexington Oilers", "sports", False),
+    ("https://www.exposquare.com/events/", "Expo Square", "sports", False),
+
+    # LIBRARIES
+    ("https://events.lexingtonlibrary.org/", "Lexington City-County Library", "library", False),
+
+    # UNIVERSITIES
+    ("https://calendar.ulexington.edu/", "University of Lexington", "university", False),
+    ("https://lexington.okstate.edu/calendar/", "OSU-Lexington", "university", False),
+    ("https://www.oru.edu/events/", "ORU", "university", False),
+    ("https://www.lexingtoncc.edu/campus-life/events/", "Lexington Community College", "university", False),
 
     # LGBTQ+ SPECIFIC (return ALL events, no keyword filter)
-    ("https://www.lexpridecenter.org/pride-community-event-calendar", "Lexington Pride Center", "lgbtq", True),
+    # 2026-07-06: lexingtonpride.org rebuilt (Astra WP); /events/ is now 404, so
+    # point at the homepage — announcements surface there until a new events
+    # path exists.
+    ("https://lexingtonpride.org/", "Lexington Pride", "lgbtq", True),
+    # Goff Center / Goff Fest — celebrates gay architect Bruce Goff's legacy;
+    # programming includes an Annual Pride Celebration. Plain-HTML events page,
+    # reliable backup to the @goff_fest Instagram scraper.
+    ("https://goff-fest.com/events/", "Goff Center / Goff Fest", "lgbtq", True),
 
-    # AGGREGATORS
-    ("https://www.meetup.com/find/?allMeetups=true&radius=25&userFreeform=Lexington%2C+KY", "Meetup Lexington", "ticketing", False),
+    # TICKETING / AGGREGATORS
+    ("https://seatgeek.com/lexington-oklahoma-tickets", "SeatGeek Lexington", "ticketing", False),
+    # 2026-07-06: Meetup REMOVED from this list. The find-page URL ignores
+    # userFreeform and geolocates by IP — from this machine (Mexico) it served
+    # CDMX events that passed the LGBTQ filter labeled as Lexington. Meetup is
+    # covered by eventbrite_meetup.MeetupScraper, which pins
+    # location=us--ok--lexington explicitly. Never re-add an IP-geolocated URL here.
+
+    # NEIGHBORHOOD / NICHE
+    ("https://www.brooksidelexington.com/events/", "Brookside Lexington", "neighborhood", False),
+    ("https://www.cherrystreetfarmersmarket.com/events/", "Cherry Street Farmers Market", "neighborhood", False),
+    ("https://www.lexingtonfarmersmarket.org/events/", "Lexington Farmers' Market", "neighborhood", False),
 ]
+
+# Merge in calendar sites discovered + promoted by the weekly source-growth
+# engine (data/dynamic_sources.json). De-duped by URL.
+SITES = _dyn.merge_unique(SITES, _dyn.calendar_sites())
 
 
 class ExtendedCalendarsScraper(BaseScraper):

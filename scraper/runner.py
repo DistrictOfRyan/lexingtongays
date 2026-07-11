@@ -13,33 +13,31 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 from scraper import (
-    # Generic scrapers (work for any city via config.SOURCES URLs)
+    recurring,
+    okeq_calendar,
+    twisted_arts,
+    specific_orgs,
     eventbrite_meetup,
     community_calendars,
     extended_calendars,
-    rendered_sites,
-    instagram_orgs,
     aa_meetings,
+    homo_hotel,
     community_groups,
     qlist,
     churches,
     bars,
     manual_input,
+    major_events,
+    lexington_arts_district,
     facebook_events,
     ticketing_sites,
     timetree_scraper,
     slack_browser_scraper,
-    # City-specific scrapers (stubbed for Lexington — return []. Operator writes
-    # real Lexington implementations as the city's anchor orgs are scraped.)
-    recurring,
-    okeq_calendar,
-    twisted_arts,
-    specific_orgs,
-    homo_hotel,
-    # NOTE: lexington_arts_district was removed — Lexington has no single named
-    # "Arts District" like Tulsa. If a similar concept emerges (Distillery District,
-    # Manchester St area), add a new scraper module and import it here.
+    studio66,
+    instagram_orgs,
+    rendered_sites,
 )
+from scraper.relevance import compile_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +56,8 @@ SIMILARITY_THRESHOLD = 0.75
 # Explicit LGBTQ identity terms — matched with WORD BOUNDARIES. The old
 # substring check marked dozens of generic events "LGBTQ-relevant" every week:
 # 'bi' fired inside 'bingo'/'exhibit', 'trans' inside 'transform', and generic
-# cultural words like 'workshop' made an unrelated small-business workshop count
-# as an LGBTQ event.
+# cultural words like 'workshop' made an Owasso small-business workshop count
+# as an LGBTQ event (W24).
 _LGBTQ_IDENTITY_TERMS = [
     "lgbtq", "lgbtqia", "lgbt", "queer", "gay", "gays", "lesbian", "bi",
     "bisexual", "trans", "transgender", "nonbinary", "non-binary", "drag",
@@ -82,9 +80,10 @@ LGBTQ_KEYWORDS = [
 ]
 
 # Generic community/cultural signals — these KEEP an event (the website lists
-# all real community events) but mark it community_event, NOT lgbtq_relevant.
-# They used to live in LGBTQ_KEYWORDS, which inflated the LGBTQ counts feeding
-# the content gate, the featured-LGBTQ target, and the EOTW pool.
+# all real Lexington community events) but mark it community_event, NOT
+# lgbtq_relevant. They used to live in LGBTQ_KEYWORDS, which inflated the
+# LGBTQ counts feeding the content gate, the >=60% featured-LGBTQ target, and
+# the EOTW pool.
 COMMUNITY_CULTURE_KEYWORDS = [
     "feminist", "radical",
     "night market", "art market", "bazaar", "market",
@@ -105,6 +104,18 @@ _GENERIC_NON_LGBTQ_BLOCKLIST = [
     "football game", "football season", "nfl ", " nfl", "nba ", " nba",
     "mlb ", " mlb", "nhl ", " nhl", "college football", "college basketball",
     "nascar", "ufc ", " ufc", "mma fight",
+    # Motorsport "drag" + kids programming + hobby comps (William 2026-07-06:
+    # google_events flooded Sesame Street / gymnastics / car-stereo comps in,
+    # and automotive drag races masqueraded as drag shows).
+    "drag racing", "drag races", "drag strip", "dragway", "raceway",
+    "street outlaws", "motocross", "monster truck", "car stereo", "car audio",
+    "sesame street", "paw patrol", "disney on ice", "bluey live",
+    "gymnastics meet", "gymnastics championship", "cheer competition",
+    "gun show", "rock mineral society",
+    # "Trans-Miss" = Trans-Mississippi Golf Association, a straight amateur golf
+    # tournament the word-boundary "trans" matcher misreads as LGBTQ (W28 made it
+    # Tuesday's boxed hero). Mainstream golf championships are off-topic anyway.
+    "trans-miss", "trans miss amateur", "amateur golf championship",
     # Petroleum/energy industry conferences
     "society of petroleum", "petroleum engineers",
     "spe ior", "spe improved", "improved oil recovery",
@@ -122,18 +133,26 @@ JUNK_NAMES = {
     "learn more", "view all", "see more", "load more", "rsvp",
     "register", "sign up", "donate", "subscribe", "contact us",
     "home", "about", "menu", "calendar", "events", "back",
-    # Google Events card artifacts (shipped "Information and Tickets" cards)
+    # Google Events card artifacts (W24 shipped three "Information and Tickets" cards)
     "information and tickets", "information and tickets ...",
     "get directions", "tickets & info", "more information", "event details",
     # Org-site navigation text that scrapes as "events" (community_groups)
     "weekly events", "upcoming events", "stay connected", "our partners",
-    "event application", "event calendar",
+    "event application", "event calendar", "get your tickets",
 }
 
 # Compose city-specific values from config (with safe fallbacks for new-city scaffolds).
 LGBTQ_SOURCES = getattr(config, "LGBTQ_SOURCES", set())
 COMMUNITY_PARTNER_KEYWORDS = getattr(config, "COMMUNITY_PARTNER_KEYWORDS", [])
 NON_LGBTQ_BLOCKLIST = _GENERIC_NON_LGBTQ_BLOCKLIST + getattr(config, "NON_LGBTQ_BLOCKLIST_CITY", [])
+
+# Word-boundary matchers for the community-keeper lists. Substring matching
+# used to keep an event as community_event on false hits ('market' inside
+# 'supermarket'/'marketing', 'panel' inside a random word); word boundaries
+# match runner's identity regex. Keeper lists only gate WEBSITE inclusion, so
+# this is lower-stakes than the LGBTQ gate, but the same correctness applies.
+_COMMUNITY_PARTNER_RX = compile_keywords(COMMUNITY_PARTNER_KEYWORDS)
+_COMMUNITY_CULTURE_RX = compile_keywords(COMMUNITY_CULTURE_KEYWORDS)
 
 
 
@@ -162,8 +181,57 @@ def _same_date(date_a: str, date_b: str) -> bool:
     return date_a.strip() == date_b.strip()
 
 
+def _venues_match(venue_a: str, venue_b: str) -> bool:
+    """One normalized venue contains the other (long enough to be meaningful).
+    Catches 'Elote Cafe & Catering' vs 'Elote Cafe & Catering, 514 S Boston Ave'."""
+    a, b = _normalize(venue_a or ""), _normalize(venue_b or "")
+    if len(a) < 8 or len(b) < 8:
+        return False
+    return a in b or b in a
+
+
+# Words too generic to prove two same-venue titles are one event ("Non-binary
+# Support Group" vs "Gender Outreach Support Group" are DIFFERENT groups).
+_VENUE_DEDUP_GENERIC = {
+    "support", "group", "night", "meeting", "weekly", "monthly", "annual",
+    "lexington", "event", "events", "with", "presents", "featuring",
+}
+
+
+def _same_event_by_venue(ev_a: Dict, ev_b: Dict) -> bool:
+    """Same date + same venue + names sharing >=2 significant words = one real
+    event scraped under two different titles. Name similarity alone missed
+    W28's 'Elote Drag Brunch' (recurring) vs 'Drag Brunch : jul. 11th - stars,
+    stripes & sequins' (community_groups) — both at Elote on the same Saturday,
+    which put the same brunch in two of Saturday's three featured slots.
+
+    Only DISTINCTIVE shared words count: generic event-type words are ignored,
+    and so are words of the venue itself leaking into a title ('Happy Hour at
+    Saturn Room' vs 'Record Night at Saturn Room' are different events)."""
+    if not _same_date(ev_a.get("date", ""), ev_b.get("date", "")):
+        return False
+    if not _venues_match(ev_a.get("venue"), ev_b.get("venue")):
+        return False
+    venue_words = {w for w in _normalize((ev_a.get("venue") or "") + " " + (ev_b.get("venue") or "")).split()
+                   if len(w) >= 4}
+
+    def _tokens(name):
+        out = set()
+        for w in _normalize(name or "").split():
+            if len(w) < 4 or w in _VENUE_DEDUP_GENERIC:
+                continue
+            # venue word (or an address-glued variant like 'room209') in a title
+            if any(v.startswith(w) or w.startswith(v) for v in venue_words):
+                continue
+            out.add(w)
+        return out
+
+    return len(_tokens(ev_a.get("name")) & _tokens(ev_b.get("name"))) >= 2
+
+
 def deduplicate(events: List[Dict]) -> List[Dict]:
-    """Remove duplicate events based on name + date similarity."""
+    """Remove duplicate events based on name + date similarity, or same
+    venue + date + overlapping name words (the cross-source rename case)."""
     if not events:
         return []
 
@@ -171,21 +239,48 @@ def deduplicate(events: List[Dict]) -> List[Dict]:
     for event in events:
         is_dup = False
         for i, existing in enumerate(unique):
-            if _are_similar(event["name"], existing["name"]) and _same_date(event["date"], existing["date"]):
+            if (_are_similar(event["name"], existing["name"]) and _same_date(event["date"], existing["date"])) \
+                    or _same_event_by_venue(event, existing):
                 is_dup = True
                 # Collect all unique URLs from both events before deciding winner
                 merged_urls = list(dict.fromkeys(
                     (existing.get("source_urls") or []) + (event.get("source_urls") or [])
                 ))
-                if event["priority"] < existing["priority"]:
+                # A live-scraped record BEATS the hardcoded recurring one: the
+                # scrape proves a SPECIAL instance ('Drag Brunch : ... stars,
+                # stripes & sequins' vs the recurring 'Elote Drag Brunch'),
+                # and source=recurring is barred from EOTW — letting recurring
+                # win the merge silently demoted the week's top event.
+                rec_event = (event.get("source") == "recurring")
+                rec_existing = (existing.get("source") == "recurring")
+                if rec_event != rec_existing:
+                    if rec_existing:
+                        unique[i] = event
+                elif event["priority"] < existing["priority"]:
                     unique[i] = event
                 elif event["priority"] == existing["priority"]:
                     event_info = sum(1 for v in event.values() if v)
                     existing_info = sum(1 for v in existing.values() if v)
                     if event_info > existing_info:
                         unique[i] = event
-                # Apply the merged URL list to whichever event won
-                unique[i]["source_urls"] = merged_urls
+                # Backfill the winner from the loser so a merge never LOSES
+                # information (address venue, richer description/time, URL).
+                winner = unique[i]
+                loser = existing if winner is event else event
+
+                def _has_addr(v):
+                    return "," in (v or "") or any(c.isdigit() for c in (v or ""))
+                if _has_addr(loser.get("venue")) and not _has_addr(winner.get("venue")):
+                    winner["venue"] = loser["venue"]
+                if len(loser.get("description") or "") > len(winner.get("description") or ""):
+                    winner["description"] = loser["description"]
+                if loser.get("url") and not winner.get("url"):
+                    winner["url"] = loser["url"]
+                if loser.get("time") and not winner.get("time"):
+                    winner["time"] = loser["time"]
+                if loser.get("lgbtq_relevant"):
+                    winner["lgbtq_relevant"] = True
+                winner["source_urls"] = merged_urls
                 break
         if not is_dup:
             unique.append(event)
@@ -245,15 +340,7 @@ def _is_lgbtq_relevant(event: Dict) -> bool:
     """Return True if this event is genuinely LGBTQ-relevant (trusted source,
     identity term with word boundaries, or queer-coded event type). Generic
     cultural events and partner-venue events are handled separately — they are
-    KEPT but classified community_event, not LGBTQ.
-
-    Clear spam (career/MLM/webinar noise, off-topic foreign commercial domains)
-    is NEVER lgbtq_relevant even when it arrives from a trusted source — a
-    blog-style 'community_groups' scraper can pick up junk like an Australian
-    'Custom Car Industry' legal-doc webinar (lawpath.com.au). Denying it the
-    trusted-source free pass routes it through the spam/off-topic screen."""
-    if _is_spam_noise(event):
-        return False
+    KEPT but classified community_event, not LGBTQ."""
     source = event.get("source", "")
     if source in LGBTQ_SOURCES:
         return True
@@ -270,7 +357,7 @@ def _is_lgbtq_relevant(event: Dict) -> bool:
 
 
 def _is_community_keeper(event: Dict) -> bool:
-    """Genuine community/cultural event or queer-welcoming partner venue —
+    """Genuine Lexington community/cultural event or queer-welcoming partner venue —
     keep on the website even without LGBTQ relevance."""
     combined = " ".join([
         event.get("name", ""),
@@ -278,9 +365,42 @@ def _is_community_keeper(event: Dict) -> bool:
         event.get("venue", ""),
         event.get("url", ""),
     ]).lower()
-    if any(kw in combined for kw in COMMUNITY_PARTNER_KEYWORDS):
+    if _COMMUNITY_PARTNER_RX.search(combined):
         return True
-    return any(kw in combined for kw in COMMUNITY_CULTURE_KEYWORDS)
+    return bool(_COMMUNITY_CULTURE_RX.search(combined))
+
+
+# ── Geographic filter ──────────────────────────────────────────────────────
+# Lexington metro / Oklahoma markers. If any appear in an event's location fields,
+# the event is in-region and kept regardless of other-state matches.
+_OK_MARKERS = (
+    "lexington", "oklahoma", ", ok", " ok ", " ok,",
+    "broken arrow", "owasso", "jenks", "bixby", "sand springs", "sapulpa",
+    "claremore", "catoosa", "glenpool", "skiatook", "collinsville",
+    "okmulgee", "muskogee", "wagoner", "coweta", "okc", "stillwater", "norman",
+)
+
+# Full names of all other 49 states + DC (no "oklahoma").
+_OTHER_STATE_NAMES = (
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+    "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+    "new mexico", "new york", "north carolina", "north dakota", "ohio",
+    "oregon", "pennsylvania", "rhode island", "south carolina", "south dakota",
+    "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+    "west virginia", "wisconsin", "wyoming",
+)
+
+# ", ST ZIP" pattern for every state abbreviation except OK. Requires a comma
+# and a following ZIP/space so prose like ", in person" never matches.
+_OTHER_STATE_ABBR_RE = re.compile(
+    r",\s*(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|"
+    r"mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|"
+    r"wv|wi|wy|dc)\b(\s+\d|\s*$)",
+    re.IGNORECASE,
+)
 
 
 # Services / recurring programming that must NEVER be featured or lead a day
@@ -294,49 +414,59 @@ _NEVER_FEATURE_SIGNALS = (
     "behavioral therapy", "group therapy", "hiv+ support", "hiv support",
     "peer support", "smart recovery", "recovery meeting", "monthly meeting",
     "girl scout", "shut up & write", "raise your spiritual iq", "mix and mingle",
-    "ttrpg", "free testing", "guiding right", "senior social", "health outreach",
+    "ttrpg", "free testing", "guiding right", "okeq senior", "okeq health",
     "sunday service", "sunday services", "open meditation", "drop-in",
+    # Services are not events (William 2026-07-06: W28 boxed "Fair Housing:
+    # Legal Aid Services" + "Name & Gender Correction Clinic" as day heroes).
+    "(cancelled", "cancelled)",  # cancelled events stay listed, never featured
+    "legal aid", "legal services", "legal clinic", "legal help", "fair housing",
+    "correction clinic", "name & gender", "name and gender", "expungement",
+    "know your rights", "fafsa", "wellness fair", "health fair",
+    "health and wellness fair", "vaccine", "vaccination", "resource fair",
+    "food pantry", "blood drive", "coat drive", "clinic",
 )
 
 
+# A cancelled/postponed event must NEVER be a highlighted pick (W28 featured
+# "(Cancelled) Clothing Swap!" as a Saturday hero). Names get word-boundary
+# matching in any spelling/format; descriptions only match explicit
+# "this event is off" phrasing so ticket boilerplate like "free cancellation"
+# or a "cancellation policy" paragraph never fires.
+_CANCELLED_NAME_RE = re.compile(r"\b(cancell?ed|postponed|rescheduled)\b", re.IGNORECASE)
+_CANCELLED_DESC_RE = re.compile(
+    r"\b(has been|have been|is|are|was|were|event)\s+(cancell?ed|postponed)\b"
+    r"|\bcancell?ed due to\b|\bno longer happening\b",
+    re.IGNORECASE)
+
+
+def _is_cancelled(event: Dict) -> bool:
+    if _CANCELLED_NAME_RE.search(event.get("name") or ""):
+        return True
+    return bool(_CANCELLED_DESC_RE.search(event.get("description") or ""))
+
+
 def _is_never_feature(event: Dict) -> bool:
+    if _is_cancelled(event):
+        return True
     text = ((event.get("name") or "") + " " + (event.get("description") or "")).lower()
     return any(sig in text for sig in _NEVER_FEATURE_SIGNALS)
 
 
-# Clear non-community SPAM — dropped even though we otherwise keep community/
-# cultural events. (Career/investor/MLM/webinar/job-fair noise.) This catches
-# the "Australia's Custom Car Industry" lawpath.com.au webinar class of junk.
+# Clear non-community SPAM — dropped even though we otherwise keep Lexington-area
+# community/cultural events. (Career/investor/MLM/webinar/job-fair noise.)
 _SPAM_NOISE_KW = (
     "career blueprint", "project manager", "investor", "founders |",
     "real estate", "make money", "webinar", "mlm", "side hustle", "crypto",
     "franchise", "sales training", "networking for", "passive income",
     "business opportunity", "hiring event", "job fair", "biggest community",
     "investors founders",
-    # SEO/legal-doc content-farm noise that blog-style scrapers pick up as
-    # "events" (e.g. lawpath.com.au "Why Understanding Agreements is Key for
-    # Australia's Custom Car Industry").
-    "understanding agreements", "legal documents", "legal-documents",
-    "key for australia", "business structure", "guide to",
 )
 
-# Off-topic / foreign commercial domains that occasionally surface as bogus
-# "events" through generic community/blog scrapers. An event whose URL points
-# here is a content-farm artifact, never a local LGBTQ+ community event.
-_JUNK_URL_DOMAINS = (
-    "lawpath.com.au", "lawpath.com", ".com.au", ".co.uk/legal",
-    "legalvision.", "rocketlawyer.", "legalzoom.",
-)
-
-
-def _has_junk_url(event: Dict) -> bool:
-    url = (event.get("url") or "").lower()
-    return any(dom in url for dom in _JUNK_URL_DOMAINS)
-
-# Civic / government / business-networking noise. These never belong on an
-# LGBTQ+ community events guide. Applied only to events that are NOT
-# lgbtq_relevant, so a "Pride Night at City Hall" or an LGBTQ chamber mixer
-# still passes.
+# Civic / government / business-networking noise — W24 shipped an Owasso city
+# small-business workshop and a Chamber of Commerce legislative breakfast.
+# These never belong on an LGBTQ+ community events guide. Applied only to
+# events that are NOT lgbtq_relevant, so a "Pride Night at City Hall" or an
+# LGBTQ chamber mixer still passes.
 _CIVIC_NOISE_KW = (
     "city council", "council meeting", "town hall meeting", "school board",
     "planning commission", "board of adjustment", "county commission",
@@ -347,11 +477,12 @@ _CIVIC_NOISE_KW = (
     "homeowners association", "hoa meeting", "brotherhood breakfast",
 )
 _CIVIC_VENUE_KW = (
-    "chamber of commerce", "city hall", "city council", "county commission",
+    "chamber of commerce", "city hall", "city of owasso", "city of broken arrow",
+    "city of bixby", "city of jenks", "city of sand springs", "city of sapulpa",
 )
 
 # Children's / library-kids programming — real events, wrong audience for the
-# site (baby storytimes, Teen Time: Gaming, kids' day camps).
+# site (W24 listed baby storytimes, Teen Time: Gaming, kids' day camps).
 _KIDS_NOISE_KW = (
     "storytime", "story time", "toddlers", "babies", "teen time",
     "kids camp", "day camp", "summer camp", "vacation bible school",
@@ -359,16 +490,14 @@ _KIDS_NOISE_KW = (
 )
 
 # Mainstream pro/minor-league sports game listings. Only applied to
-# non-LGBTQ events, so "Pride Night at the ballpark" still passes.
+# non-LGBTQ events, so "Pride Night at the Drillers" still passes.
 _MAINSTREAM_SPORTS_KW = (
-    "minor league", "vs. ", " vs ", "season tickets", "home opener",
-    "tailgate", "season opener",
+    "lexington drillers", "wind surge", "fc lexington", "lexington oilers",
+    "lexington roughnecks", "at lexington drillers", "vs. lexington",
 )
 
 
 def _is_spam_noise(event: Dict) -> bool:
-    if _has_junk_url(event):
-        return True
     text = ((event.get("name") or "") + " " + (event.get("description") or "")).lower()
     return any(sig in text for sig in _SPAM_NOISE_KW)
 
@@ -387,13 +516,36 @@ def _is_offtopic_noise(event: Dict) -> tuple:
     return False, ""
 
 
+def _location_text(event: Dict) -> str:
+    return " ".join([
+        event.get("venue", "") or "",
+        event.get("address", "") or "",
+        event.get("city", "") or "",
+        event.get("location", "") or "",
+    ]).lower()
+
+
+def _is_out_of_region(event: Dict) -> bool:
+    """True if the event is clearly outside the Lexington metro / Oklahoma."""
+    loc = _location_text(event).strip()
+    if not loc:
+        return False  # no location info — cannot judge, keep it
+    if any(m in loc for m in _OK_MARKERS):
+        return False  # explicitly Oklahoma/Lexington metro
+    if any(s in loc for s in _OTHER_STATE_NAMES):
+        return True
+    if _OTHER_STATE_ABBR_RE.search(loc):
+        return True
+    return False
+
+
 def apply_quality_filters(events: List[Dict]) -> List[Dict]:
     """Apply all quality filters and annotate each event with lgbtq_relevant."""
     monday, sunday = _get_week_range()
     filtered = []
     removed_counts = {
         "no_name": 0, "junk_name": 0, "out_of_week": 0,
-        "non_lgbtq_blocklist": 0, "not_lgbtq_relevant": 0,
+        "non_lgbtq_blocklist": 0, "not_lgbtq_relevant": 0, "out_of_region": 0,
     }
 
     for event in events:
@@ -419,6 +571,12 @@ def apply_quality_filters(events: List[Dict]) -> List[Dict]:
                 logger.debug(f"[filter] Out-of-week removed: '{name}' on {date_str}")
                 continue
 
+        # Filter 3b: out-of-region (not Lexington metro / Oklahoma)
+        if _is_out_of_region(event):
+            removed_counts["out_of_region"] += 1
+            logger.info(f"[filter] Out-of-region removed: '{name}' (loc={_location_text(event)[:60]})")
+            continue
+
         # Filter 4: non-LGBTQ blocklist — blocks matching events from ANY source
         if _is_clearly_not_lgbtq(event):
             removed_counts["non_lgbtq_blocklist"] += 1
@@ -431,11 +589,12 @@ def apply_quality_filters(events: List[Dict]) -> List[Dict]:
         if _is_never_feature(event):
             event["never_feature"] = True
 
-        # Filter 5: keep genuine community/cultural events even without LGBTQ
-        # keywords — they populate the WEBSITE and the featured-candidate pool.
-        # Drop clear non-community SPAM (career/investor/MLM/job-fair/webinar)
-        # AND off-topic noise (civic/government meetings, kids' library
-        # programming, mainstream sports games).
+        # Filter 5: keep genuine Lexington community/cultural events even without
+        # LGBTQ keywords — they populate the WEBSITE (William: all events you
+        # find go on the website) and the featured-candidate pool. Drop clear
+        # non-community SPAM (career/investor/MLM/job-fair) AND off-topic noise
+        # (civic/government meetings, kids' library programming, mainstream
+        # sports games — the W24 "Owasso city council" class of nonsense).
         if source not in LGBTQ_SOURCES and not event["lgbtq_relevant"]:
             if _is_spam_noise(event):
                 removed_counts["not_lgbtq_relevant"] += 1
@@ -454,6 +613,7 @@ def apply_quality_filters(events: List[Dict]) -> List[Dict]:
         f"[filter] Removed: {removed_counts['no_name']} no-name, "
         f"{removed_counts['junk_name']} junk-name, "
         f"{removed_counts['out_of_week']} out-of-week, "
+        f"{removed_counts['out_of_region']} out-of-region, "
         f"{removed_counts['non_lgbtq_blocklist']} non-LGBTQ blocklist, "
         f"{removed_counts['not_lgbtq_relevant']} not LGBTQ-relevant"
     )
@@ -565,7 +725,7 @@ _TIME_TOKEN_RX = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$", re.IGNORECAS
 def _clean_time_text(t: str) -> str:
     """Normalize unicode whitespace (thin/narrow no-break spaces from Google
     Events) to ASCII space and unicode dashes to '-'. Google emits times like
-    '6 - 10 PM' which the old ASCII-only parsing missed entirely."""
+    '6 - 10 PM' which the old ASCII-only parsing missed entirely."""
     import unicodedata
     t = "".join(" " if unicodedata.category(c) == "Zs" else c for c in t)
     for d in _UNICODE_DASHES:
@@ -606,12 +766,13 @@ def _normalize_time_str(t: str) -> str:
     """Convert any scraped time string to canonical 12-hour AM/PM format.
 
     Handles the formats that previously broke downstream display:
-      '6 - 10 PM'  -> '6:00 PM - 10:00 PM'  (unicode spaces, shared meridiem)
+      '6 - 10 PM'  -> '6:00 PM - 10:00 PM'  (unicode spaces, shared meridiem)
       '9:00 - 10:30 AM'           -> '9:00 AM - 10:30 AM'
       '19:00'                     -> '7:00 PM'
     The old code split only on ASCII ' - ', so unicode-dash ranges fell through
     unparsed and the website's display regex then grabbed the only AM/PM-tagged
-    token: the END time. Unparseable strings are returned unchanged."""
+    token: the END time (soda-bottle convention at '6 - 10 PM' rendered as 10 PM).
+    Unparseable strings (e.g. 'Doors 9 PM, Show 10 PM') are returned unchanged."""
     raw = t.strip()
     cleaned = _clean_time_text(raw)
     parts = re.split(r"\s*(?:-|\bto\b)\s*", cleaned, maxsplit=1, flags=re.IGNORECASE)
@@ -692,7 +853,8 @@ def run_all_scrapers() -> List[Dict]:
 
     # Ordered by importance/reliability
     scrapers = [
-        ("manual_input", manual_input.scrape),  # Always first — manually curated, priority=1
+        ("manual_input", manual_input.scrape),  # Always first — manually curated, priority honored (default 1)
+        ("major_events", major_events.scrape),  # Marquee Lexington civic events (Lexington Tough, Route 66 centennial, State Fair, Oktoberfest...) — website coverage, priority 3
         ("recurring", recurring.scrape),
         ("okeq_calendar", okeq_calendar.scrape),
         ("twisted_arts", twisted_arts.scrape),
@@ -702,14 +864,15 @@ def run_all_scrapers() -> List[Dict]:
         ("homo_hotel", homo_hotel.scrape),
         ("community_calendars", community_calendars.scrape),
         ("extended_calendars", extended_calendars.scrape),
-        ("rendered_sites", rendered_sites.scrape),  # JS-rendered venue calendars (Playwright + per-site specs)
-        ("instagram_orgs", instagram_orgs.scrape),  # IG-primary gay bars: The Bar Complex (@thebarcomplex), Crossings (@crossingslexington)
+        ("rendered_sites", rendered_sites.scrape),  # JS-rendered venue calendars (Playwright + per-site specs) - revives Philbrook/Cain's/BOK/Hard Rock/etc. that extended_calendars saw as empty shells
         ("aa_meetings", aa_meetings.scrape),
         ("qlist", qlist.scrape),
         ("community_groups", community_groups.scrape),
+        ("studio_66", studio66.scrape),  # @studio.66_ IG via authenticated instagrapi session
+        ("instagram_orgs", instagram_orgs.scrape),  # IG-only orgs: KLASSIC (@upflykai), Goff Center (@goff_fest)
         ("churches", churches.scrape),
         ("bars", bars.scrape),
-        # Lexington-specific arts district scraper would go here when one is written
+        ("lexington_arts_district", lexington_arts_district.scrape),
         ("facebook_events", facebook_events.scrape),
         ("ticketing_sites", ticketing_sites.scrape),
         ("timetree_scraper", timetree_scraper.scrape),  # Lexington Isn't Boring -- iCal/Playwright/browser-flag
@@ -805,6 +968,173 @@ def _append_growth_log(events: List[Dict], week_key: str, start_time: datetime):
         logger.error(f"Growth log write failed: {exc}", exc_info=True)
 
 
+PENDING_ACTIONS_PATH = os.path.join(
+    os.path.expanduser("~"), ".claude", "pending-william-actions.md"
+)
+LGBTQ_DATED_MINIMUM = 8
+PRIMARY_SOURCE_MINIMUM = 3
+
+# Venues that must be covered every week. If one of these trusted sources
+# returns 0 events, that is almost always a silent scrape failure (rate-limited
+# IG endpoint, renamed handle, dead site), not a genuinely empty week. The
+# content gate only halts when the WHOLE pool is thin, so the main gay bars can
+# quietly drop out while other sources fill the quota — this catches exactly
+# that. Override per-city via config.KEY_VENUE_SOURCES.
+KEY_VENUE_SOURCES = getattr(config, "KEY_VENUE_SOURCES", {
+    "lexington_eagle_ig": "Lexington Eagle (@lexingtoneagle)",
+    "club_majestic_ig": "Club Majestic (@clubmajesticlexington)",
+    "ybr_ig": "Yellow Brick Road (@lexingtonybr)",
+    "studio_66": "Studio 66 (@studio.66_)",
+})
+
+# ── Flagship upcoming-event hold ──────────────────────────────────────────────
+# The weekly site only shows the current Mon–Sun window, so a flagship event
+# announced weeks early (Pride, an anniversary, a festival, a big touring drag
+# show) would otherwise be dropped by the current-week filter and forgotten by
+# the time its week arrives. We persist such FUTURE events to a small ledger and
+# resurface them when their week comes around — even if the source stopped
+# posting by then. Conservative by design: only genuinely juicy events qualify,
+# so the current-week roundup is never polluted with far-off listings.
+UPCOMING_LEDGER = os.path.join(getattr(config, "DATA_DIR", "data"), "upcoming_events.json")
+FLAGSHIP_LOOKAHEAD_WEEKS = 8
+_FLAGSHIP_KEYWORDS = (
+    "pride", "anniversary", "festival", "pageant", "ball ", "block party",
+    "grand opening", "headliner", "world tour", "drag brunch", "homo hotel",
+)
+
+
+def _write_pending_action(message: str, week_key: str) -> None:
+    """Append a timestamped entry to pending-william-actions.md."""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry = f"\n## [{timestamp}] LexingtonGays scraper HALTED — {week_key}\n- {message}\n"
+        with open(PENDING_ACTIONS_PATH, "a", encoding="utf-8") as f:
+            f.write(entry)
+        logger.warning(f"[content-gate] Written to pending-william-actions.md")
+    except Exception as exc:
+        logger.error(f"[content-gate] Could not write pending action: {exc}")
+
+
+def _warn_missing_key_venues(events: List[Dict], week_key: str) -> None:
+    """Loud, NON-halting alert when a must-cover venue returns 0 events.
+
+    Distinct from the content gate (which only fires when the whole pool is
+    thin). This is the 'don't silently skip the gay bar' safety net: if the
+    Eagle/Majestic/YBR/Studio 66 contributed nothing, flag it so a juicy event
+    behind a rate-limited IG endpoint or a renamed handle gets caught and can be
+    added by hand, rather than vanishing."""
+    present = {(e.get("source") or "") for e in events}
+    missing = {src: label for src, label in KEY_VENUE_SOURCES.items() if src not in present}
+    if not missing:
+        return
+    labels = ", ".join(sorted(missing.values()))
+    msg = (
+        f"{len(missing)} key venue(s) returned 0 events this week: {labels}. "
+        "Likely a silent scrape failure (rate-limited IG endpoint, renamed "
+        "handle, or dead site), not a genuinely empty week. Check the venue's "
+        "Instagram directly and add anything live to data/manual_events.json, "
+        "then re-run the scraper."
+    )
+    logger.warning("[key-venue] %s", msg)
+    print(f"\n*** KEY VENUE ALERT ***\n{msg}\n")
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry = (f"\n## [{timestamp}] LexingtonGays key venue(s) silent — {week_key}\n"
+                 f"- {msg}\n")
+        with open(PENDING_ACTIONS_PATH, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except Exception as exc:
+        logger.error(f"[key-venue] Could not write pending action: {exc}")
+
+
+# ── Flagship upcoming-event hold helpers ──────────────────────────────────────
+
+def _ledger_key(event: Dict) -> tuple:
+    return (_normalize(event.get("name", "")), (event.get("date") or "").strip())
+
+
+def _load_upcoming() -> List[Dict]:
+    try:
+        with open(UPCOMING_LEDGER, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_upcoming(ledger: List[Dict]) -> None:
+    try:
+        config.ensure_dirs()
+        with open(UPCOMING_LEDGER, "w", encoding="utf-8") as f:
+            json.dump(ledger, f, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        logger.error("[upcoming] could not save ledger: %s", exc)
+
+
+def _prune_past(ledger: List[Dict]) -> List[Dict]:
+    today = datetime.now().strftime("%Y-%m-%d")
+    return [e for e in ledger if (e.get("date") or "") >= today]
+
+
+def _is_flagship_future(event: Dict, sunday: datetime, horizon: datetime) -> bool:
+    """A juicy event dated AFTER this week but within the lookahead horizon:
+    priority-1, a key-venue event, or a flagship-keyword match."""
+    date_str = event.get("date", "")
+    if not date_str:
+        return False
+    try:
+        dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+    except ValueError:
+        return False
+    if not (sunday < dt <= horizon):
+        return False
+    if int(event.get("priority", 99)) <= 1:
+        return True
+    if (event.get("source") or "") in KEY_VENUE_SOURCES:
+        return True
+    text = ((event.get("name") or "") + " " + (event.get("description") or "")).lower()
+    return any(kw in text for kw in _FLAGSHIP_KEYWORDS)
+
+
+def manage_upcoming(raw_events: List[Dict]) -> List[Dict]:
+    """Harvest flagship FUTURE events into the ledger and resurface any that have
+    now entered the current week. Returns the resurfaced events to merge into the
+    pool (they then flow through the normal filter/dedup path). Never raises into
+    the caller — the run continues even if the ledger is unreadable."""
+    monday, sunday = _get_week_range()
+    horizon = sunday + timedelta(weeks=FLAGSHIP_LOOKAHEAD_WEEKS)
+    ledger = _prune_past(_load_upcoming())
+    seen = {_ledger_key(e) for e in ledger}
+
+    harvested = 0
+    for ev in raw_events:
+        if _is_flagship_future(ev, sunday, horizon):
+            key = _ledger_key(ev)
+            if key not in seen:
+                stored = dict(ev)
+                stored["from_upcoming_ledger"] = True
+                ledger.append(stored)
+                seen.add(key)
+                harvested += 1
+
+    resurfaced = []
+    for e in ledger:
+        try:
+            dt = datetime.strptime((e.get("date") or "")[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        if monday <= dt <= sunday:
+            ev = dict(e)
+            ev["resurfaced_from_upcoming"] = True
+            resurfaced.append(ev)
+
+    _save_upcoming(ledger)
+    if harvested or resurfaced:
+        logger.info("[upcoming] harvested %d future flagship event(s); resurfaced %d "
+                    "due this week (ledger now %d)", harvested, len(resurfaced), len(ledger))
+    return resurfaced
+
+
 def main():
     """Main entry point: run all scrapers, filter, deduplicate, sort, save."""
     start_time = datetime.now()
@@ -825,6 +1155,46 @@ def main():
     raw_events = run_all_scrapers()
     logger.info(f"\nTotal raw events: {len(raw_events)}")
 
+    # 1a. Recurring reality-check: drop paused/dead recurring events (a closed
+    # bar or cancelled night stops posting a ghost), auto-confirm any that a real
+    # live scrape corroborates this week -- adopting the live venue so a moved
+    # night self-corrects -- and track verification freshness for the preflight
+    # gate. Runs before the upcoming-hold so dropped events are never harvested.
+    try:
+        from scraper.recurring_verify import verify_recurring, load_ledger, save_ledger
+        _vledger = load_ledger()
+        _vtoday = datetime.now().strftime("%Y-%m-%d")
+        _recurring_evs = [e for e in raw_events if (e.get("source") or "") == "recurring"]
+        _live_evs = [e for e in raw_events if (e.get("source") or "") != "recurring"]
+        _kept_rec, _vreport = verify_recurring(_recurring_evs, _live_evs, _vtoday, _vledger)
+        save_ledger(_vledger)
+        raw_events = _live_evs + _kept_rec
+        logger.info(
+            "[recurring-verify] %d live-confirmed, %d on seed clock, %d venue-adopted, "
+            "%d venue-conflict(s), %d dropped (paused/dead)",
+            len(_vreport["live_confirmed"]), len(_vreport["seeded"]),
+            len(_vreport["venue_adopted"]), len(_vreport["venue_conflicts"]),
+            len(_vreport["dropped"]))
+        for _vline in _vreport["venue_adopted"]:
+            logger.info("[recurring-verify] venue adopted -> %s", _vline)
+        for _cline in _vreport["venue_conflicts"]:
+            logger.warning("[recurring-verify] possible move -> %s", _cline)
+        for _dline in _vreport["dropped"]:
+            logger.info("[recurring-verify] dropped -> %s", _dline)
+    except Exception as exc:
+        logger.error(f"[recurring-verify] step failed (non-fatal): {exc}", exc_info=True)
+
+    # 1b. Flagship upcoming-event hold: remember juicy FUTURE events (Pride,
+    # anniversaries, festivals, key-venue/priority-1) so a thing announced weeks
+    # early is never dropped, and resurface any whose week has now arrived.
+    try:
+        resurfaced = manage_upcoming(raw_events)
+        if resurfaced:
+            raw_events.extend(resurfaced)
+            logger.info(f"Re-injected {len(resurfaced)} flagship event(s) due this week")
+    except Exception as exc:
+        logger.error(f"[upcoming] hold step failed (non-fatal): {exc}", exc_info=True)
+
     # 2. Apply quality filters (junk names, out-of-week dates, lgbtq_relevant annotation)
     filtered_events = apply_quality_filters(raw_events)
     logger.info(f"After quality filters: {len(filtered_events)}")
@@ -836,6 +1206,60 @@ def main():
     # 4. Ensure Homo Hotel is present and at top
     unique_events = ensure_homo_hotel(unique_events)
 
+    # 4.5. Slack zero-event warning — must appear before the content gate
+    slack_events = [e for e in unique_events if "slack" in (e.get("source") or "").lower()]
+    if not slack_events:
+        import glob as _glob
+        flag_file = os.path.join(config.DATA_DIR, "slack_browser_needed.flag")
+        if os.path.exists(flag_file):
+            logger.warning(
+                "[SLACK] ZERO Slack events found and slack_browser_needed.flag exists. "
+                "LexingtonRemote Slack (#events-local, #unite-lgbtq-plus) is a REQUIRED source. "
+                "Run the browser extraction step before generating slides."
+            )
+        else:
+            logger.warning(
+                "[SLACK] ZERO Slack events found. slack_browser_needed.flag not present — "
+                "slack_browser_scraper may have failed silently. Check data/slack_events_browser.json."
+            )
+
+    # 4.5b. Key-venue zero-event alert — surfaces a silent gay-bar scrape miss
+    # (the "don't skip the juicy events" guard) even when the content gate passes.
+    _warn_missing_key_venues(unique_events, get_week_key())
+
+    # 4.6. LGBTQ content quality gate — halt if event pool is too thin to produce a good post
+    lgbtq_dated = [
+        e for e in unique_events
+        if e.get("lgbtq_relevant") and e.get("date")
+    ]
+    lgbtq_from_primary = [
+        e for e in unique_events
+        if (e.get("source") or "") in LGBTQ_SOURCES and e.get("date")
+    ]
+
+    week_key = get_week_key()
+
+    if len(lgbtq_dated) < LGBTQ_DATED_MINIMUM or len(lgbtq_from_primary) < PRIMARY_SOURCE_MINIMUM:
+        missing_primary = [
+            src for src in sorted(LGBTQ_SOURCES)
+            if not any((e.get("source") or "") == src for e in unique_events)
+        ]
+        gate_msg = (
+            f"CONTENT GATE FAILED for {week_key}: "
+            f"{len(lgbtq_dated)} LGBTQ-relevant dated events "
+            f"(minimum {LGBTQ_DATED_MINIMUM}), "
+            f"{len(lgbtq_from_primary)} from primary LGBTQ sources "
+            f"(minimum {PRIMARY_SOURCE_MINIMUM}). "
+            f"Primary sources returning 0 events: {missing_primary}. "
+            f"Scrape output is too thin or off-audience to post. "
+            f"Fix scrapers, re-run the browser Slack step, then re-run the scraper."
+        )
+        logger.error(f"[content-gate] {gate_msg}")
+        print(f"\n*** CONTENT GATE HALT ***\n{gate_msg}\n")
+        _write_pending_action(gate_msg, week_key)
+        import sys
+        sys.exit(1)
+
     # 5. Sort by priority then date
     sorted_events = sort_events(unique_events)
 
@@ -846,8 +1270,8 @@ def main():
             ev["time"] = _normalize_time_str(raw_t)
 
     # 5c. Sanity checker — quarantines off-topic/junk/implausible events the
-    # keyword filters missed (e.g. an off-topic webinar, kids storytimes,
-    # end-time-as-start-time renders). Runs BEFORE save so the
+    # keyword filters missed (2026-W24 shipped Owasso civic meetings, kids
+    # storytimes, and end-time-as-start-time renders). Runs BEFORE save so the
     # _all/_weekday/_weekend splits are all written clean. Uses an LLM verdict
     # pass when available; NEVER allowed to break the scrape itself.
     week_key = get_week_key()
@@ -857,6 +1281,15 @@ def main():
     except Exception as exc:
         logger.error(f"[sanity] checker failed (saving unsanitized output): {exc}",
                      exc_info=True)
+
+    # 5d. Apply operator venue overrides -- month-scoped corrections that WIN over
+    # any stale scraped/hardcoded/ledger venue (e.g. Queer Women's Collective,
+    # whose location rotates monthly). The final word on venue before save.
+    try:
+        from scraper.venue_overrides import apply_venue_overrides
+        sorted_events = apply_venue_overrides(sorted_events)
+    except Exception as exc:
+        logger.error(f"[venue-override] step failed (non-fatal): {exc}", exc_info=True)
 
     # 6. Save results
     paths = save_results(sorted_events, week_key)

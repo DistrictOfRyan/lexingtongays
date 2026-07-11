@@ -35,7 +35,13 @@ META_CFG_PATH = ROOT / "meta_api_config.json"
 with open(META_CFG_PATH, encoding="utf-8") as f:
     meta_cfg = json.load(f)
 
-PAGE_TOKEN = meta_cfg["page_access_token"]
+PAGE_TOKEN = config.LEXINGTONGAYS_PAGE_ACCESS_TOKEN
+if not PAGE_TOKEN:
+    raise SystemExit(
+        "LexingtonGays page token not found. config.py looked in env "
+        "LEXINGTONGAYS_PAGE_ACCESS_TOKEN, ./meta_api_config.json, and "
+        "~/.claude/lexingtongays/meta_api_config.json. Populate one of those."
+    )
 PAGE_ID    = meta_cfg["page_id"]
 IG_ID      = meta_cfg["instagram_business_account_id"]
 API_BASE   = "https://graph.facebook.com/v25.0"
@@ -76,7 +82,7 @@ URGENCY_LINES = [
     lambda day, time, venue: f"{day} night. {time}{f' at {venue}' if venue else ''}. You will not find anything like this anywhere else in Lexington.",
     lambda day, time, venue: f"One night{f' — {day} at {time}' if day and time else ''}. An intimate space. The kind of evening you actually remember.",
     lambda day, time, venue: f"{day} at {time}{f', {venue}' if venue else ''}. The room is small. The energy is not. Go.",
-    lambda day, time, venue: f"It's {day} at {time}{f' at {venue}' if venue else ''}. A room full of queer joy and no reason to be anywhere else.",
+    lambda day, time, venue: f"It's {day} at {time}{f' at {venue}' if venue else ''}. A room full of LGBTQIA+ joy and no reason to be anywhere else.",
     lambda day, time, venue: f"{day}. {time}{f'. {venue}' if venue else ''}. Be there or spend Friday hearing about it.",
     lambda day, time, venue: f"This is {day} at {time}{f' at {venue}' if venue else ''}. Intimate. Live. Unrepeatable. Go.",
 ]
@@ -90,13 +96,22 @@ FOMO_CLOSES = [
     "One night is not all you get. There's a whole week of this. Tap through.",
 ]
 
-HASHTAGS = "#LexingtonGays #LexingtonPride #QueerLexington #LGBTQ #Oklahoma #LexingtonEvents"
+HASHTAGS = "#LexingtonGays #LexingtonLGBTQ #LexingtonLGBTQIA #LexingtonEvents #HomoHotelHappyHour #Lexington #LexingtonOklahoma #Oklahoma #VisitLexington #OklahomaLGBTQ"
+
+# Instagram location ID for "Lexington, KY" on Facebook/Instagram.
+# Adds a clickable location tag to every post — boosts local discovery.
+# DISABLED: "213340757" was rejected by the API as invalid on 2026-05-25.
+# To re-enable: GET graph.facebook.com/v25.0/search?type=place&q=Lexington+Oklahoma&access_token={TOKEN}
+# Find the correct numeric place ID and set it below.
+IG_LOCATION_ID = ""  # disabled until valid ID is confirmed
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _get_eotw() -> dict | None:
     """Find the Event of the Week from this week's events JSON."""
+    from eotw_selector import select_eotw
+
     events_file = ROOT / "data" / "events" / f"{WEEK_KEY}_all.json"
     if not events_file.exists():
         return None
@@ -116,51 +131,44 @@ def _get_eotw() -> dict | None:
             return False
 
     this_week = [e for e in events if in_week(e)]
+    return select_eotw(this_week)
 
-    def _is_hh(e):
-        return "homo hotel" in ((e.get("name") or "") + " " + (e.get("source") or "")).lower()
 
-    def _is_council(e):
-        combined = ((e.get("name") or "") + " " + (e.get("source") or "")).lower()
-        return "council oak" in combined or "comc" in combined
+def _get_handle_line() -> str:
+    """Return an '@mention' line for orgs whose events appear this week.
 
-    def _is_skip(e):
-        name = (e.get("name") or "").lower()
+    Reads this week's events, looks up each source in config.SOURCE_IG_HANDLES,
+    deduplicates, and returns a compact tag line (or '' if none are known).
+    """
+    handle_map = getattr(config, "SOURCE_IG_HANDLES", {})
+    if not handle_map:
+        return ""
+
+    events_file = ROOT / "data" / "events" / f"{WEEK_KEY}_all.json"
+    if not events_file.exists():
+        return ""
+
+    try:
+        with open(events_file, encoding="utf-8") as f:
+            data = json.load(f)
+        events = data if isinstance(data, list) else data.get("events", [])
+    except Exception:
+        return ""
+
+    seen_handles: list[str] = []
+    seen_set: set[str] = set()
+    for e in events:
         src = (e.get("source") or "").lower()
-        if src in {"recurring", "aa_meetings", "bars"}:
-            return True
-        return any(k in name for k in [
-            "bowling", "aa meeting", "support group", "sound bath", "sonic ray",
-            "health clinic", "okeq health", "hope testing", "drop-in therapy",
-            "therapy session", "free drop-in", "health outreach",
-        ])
+        handle = handle_map.get(src)
+        if handle and handle not in seen_set:
+            seen_handles.append(handle)
+            seen_set.add(handle)
 
-    _QUEER_PERF_KW = [
-        "drag", "drag show", "drag bingo", "drag brunch", "drag queen", "drag king",
-        "cabaret", "pride show", "pride event", "pride night", "queer night",
-        "gay night", "lgbtq+ night", "twisted arts", "okeq", "rainbow",
-        "pride dance", "pride party",
-    ]
+    if not seen_handles:
+        return ""
 
-    def _is_queer_perf(e):
-        combined = " ".join([
-            (e.get("name") or ""), (e.get("description") or ""),
-            (e.get("venue") or ""), (e.get("source") or "")
-        ]).lower()
-        return any(kw in combined for kw in _QUEER_PERF_KW)
-
-    hh = [e for e in this_week if _is_hh(e)]
-    if hh:
-        return hh[0]
-    council = [e for e in this_week if _is_council(e)]
-    if council:
-        return council[0]
-    queer_perf = [e for e in this_week if _is_queer_perf(e) and not _is_skip(e)
-                  and not _is_hh(e) and not _is_council(e)]
-    if queer_perf:
-        return queer_perf[0]
-    specials = [e for e in this_week if not _is_skip(e)]
-    return specials[0] if specials else (this_week[0] if this_week else None)
+    # Cap at 5 handles — more than that looks spammy
+    return " ".join(seen_handles[:5])
 
 
 def _format_date(date_str: str) -> str:
@@ -216,7 +224,12 @@ def generate_caption() -> str:
     lines.append(FOMO_CLOSES[week_num % len(FOMO_CLOSES)])
     lines.append("")
     lines.append("Hundreds of fabulous events every week in Lexington. Full list at lexingtongays.com")
+    lines.append("New carousel every Monday. Follow @lexingtongays so you don't miss it.")
     lines.append("")
+    handle_line = _get_handle_line()
+    if handle_line:
+        lines.append(handle_line)
+        lines.append("")
     lines.append(HASHTAGS)
 
     return "\n".join(lines)
@@ -235,10 +248,33 @@ def load_caption() -> str:
 
 
 def get_slides() -> list[Path]:
-    """Return sorted list of slide PNGs for this week."""
+    """Return sorted list of slide PNGs for this week.
+
+    Supports both the legacy all__*.png naming and the current weekday__*.png
+    / weekend__*.png naming conventions. Blank day slides (no events, mostly
+    black, <30KB) are silently excluded — users don't need to swipe through
+    empty slides. The CTA/outro slide is always included if present (it's
+    always >=40KB due to text content).
+    """
     if not SLIDES_DIR.exists():
         return []
-    slides = sorted(SLIDES_DIR.glob("all__*.png"))
+    # Prefer weekday__*.png (current naming), fall back to all__*.png (legacy)
+    all_slides = sorted(SLIDES_DIR.glob("weekday__*.png"))
+    if not all_slides:
+        all_slides = sorted(SLIDES_DIR.glob("all__*.png"))
+
+    # Filter out intentionally blank day slides (mostly black canvas = tiny file)
+    # Threshold: < 30KB indicates a "no events" placeholder, not a real slide.
+    # Always keep the last slide (CTA/outro) regardless of size.
+    MIN_CONTENT_BYTES = 30 * 1024
+    slides = []
+    for i, slide in enumerate(all_slides):
+        is_last = (i == len(all_slides) - 1)
+        size = slide.stat().st_size
+        if size >= MIN_CONTENT_BYTES or is_last:
+            slides.append(slide)
+        else:
+            print(f"[skip] {slide.name} ({size // 1024}KB) — blank day slide, excluded from carousel")
     return slides
 
 
@@ -246,15 +282,54 @@ def validate_slides(slides: list[Path]) -> None:
     if not slides:
         sys.exit(f"ERROR: No slides found in {SLIDES_DIR}.\n"
                  f"Run: python main.py generate-all")
-    if len(slides) < 9:
-        sys.exit(f"ERROR: Only {len(slides)} slides found (need 9).\n"
+    # Minimum 2 slides for a carousel (Instagram requires >=2).
+    # Light weeks (Memorial Day, holiday weeks) may have fewer than 9 content slides
+    # after blank day slides are filtered out — that is expected, not an error.
+    if len(slides) < 2:
+        sys.exit(f"ERROR: Only {len(slides)} slides found (need at least 2 for a carousel).\n"
                  f"Run: python main.py generate-all")
     for s in slides:
         size = s.stat().st_size
-        if size < 30 * 1024:
-            sys.exit(f"ERROR: {s.name} is only {size // 1024}KB — likely corrupt or blank.\n"
+        if size < 15 * 1024:
+            sys.exit(f"ERROR: {s.name} is only {size // 1024}KB — likely corrupt.\n"
                      f"Re-generate slides: python main.py generate-all")
-    print(f"[OK] {len(slides)} slides validated ({WEEK_KEY})")
+    # PIXEL GATE (added 2026-06-20): every carousel slide must pass the graphic QA
+    # gate (tofu/blank/resolution) before it can be hosted+posted. image_maker
+    # routes emoji to the color font so slides are normally clean, but this is the
+    # defense-in-depth backstop that makes a cheap/broken slide unpostable.
+    try:
+        from tools.preflight_image import preflight as _pf
+    except Exception:
+        from preflight_image import preflight as _pf  # when run from tools/
+    bad = []
+    for s in slides:
+        v = _pf(str(s))
+        if not v["ok"]:
+            bad.append(f"{s.name}: {v['reason']}")
+    if bad:
+        sys.exit("ERROR: carousel slide(s) FAILED graphic QA — refusing to post:\n   "
+                 + "\n   ".join(bad)
+                 + "\n   Re-generate slides: python main.py generate-all")
+    if len(slides) < 9:
+        print(f"[NOTE] {len(slides)} slides (light week — some days had no events)")
+    print(f"[OK] {len(slides)} slides validated + graphic-QA clean ({WEEK_KEY})")
+    # APPROVAL ARTIFACT (added 2026-06-20): emit the visual contact sheet so the
+    # review/approval request carries a single image of every graphic (green=pass,
+    # red=blocked). Best-effort — never blocks posting.
+    try:
+        from tools.graphic_contact_sheet import build_sheet as _sheet
+    except Exception:
+        try:
+            from graphic_contact_sheet import build_sheet as _sheet
+        except Exception:
+            _sheet = None
+    if _sheet is not None:
+        try:
+            res = _sheet(str(SLIDES_DIR))
+            if res.get("out"):
+                print(f"[OK] approval contact sheet -> {res['out']} ({res['reason']})")
+        except Exception as _e:
+            print(f"[WARN] contact sheet skipped: {_e}")
 
 
 def host_slides_for_ig(slides: list[Path]) -> list[str]:
@@ -351,16 +426,32 @@ def post_fb_carousel(slides: list[Path], caption: str) -> dict:
         return {"post_id": "dry_run_post_id", "photo_ids": photo_ids}
 
     attached = json.dumps([{"media_fbid": pid} for pid in photo_ids])
-    resp = requests.post(
-        f"{API_BASE}/{PAGE_ID}/feed",
-        data={"message": caption, "attached_media": attached, "access_token": PAGE_TOKEN},
-        timeout=60,
-    )
-    data = resp.json()
-    if "error" in data:
-        raise RuntimeError(f"FB post failed: {data['error'].get('message')}")
+    # The 9-photo attached_media /feed call intermittently returns FB's transient
+    # "Please reduce the amount of data you're asking for, then retry your
+    # request" (error code 1/2). Photos are already uploaded, so retry ONLY the
+    # post-creation call with backoff — no duplicate uploads. FB returns the new
+    # post id on success, so a retry after a true error cannot double-post.
+    data = {}
+    last_err = None
+    for attempt, delay in enumerate((0, 8, 20, 40), start=1):
+        if delay:
+            print(f"     [FB] transient error, retry {attempt-1} in {delay}s...")
+            time.sleep(delay)
+        resp = requests.post(
+            f"{API_BASE}/{PAGE_ID}/feed",
+            data={"message": caption, "attached_media": attached, "access_token": PAGE_TOKEN},
+            timeout=60,
+        )
+        data = resp.json()
+        if "id" in data:
+            break
+        last_err = data.get("error", {})
+        code = last_err.get("code")
+        # Retry only the known-transient codes; fail fast on real errors.
+        if code not in (1, 2) and "reduce the amount of data" not in (last_err.get("message") or "").lower():
+            raise RuntimeError(f"FB post failed: {last_err.get('message')}")
     if "id" not in data:
-        raise RuntimeError(f"FB post returned no ID: {data}")
+        raise RuntimeError(f"FB post failed after retries: {last_err}")
 
     post_id = data["id"]
     print(f"[OK] Facebook post: https://www.facebook.com/{post_id}")
@@ -386,6 +477,7 @@ def post_ig_carousel(public_urls: list[str], caption: str) -> str:
             data={"image_url": url, "is_carousel_item": "true", "access_token": PAGE_TOKEN},
             timeout=120,
         )
+        # Note: location_id is set on the carousel container, not individual items
         data = resp.json()
         if "error" in data:
             raise RuntimeError(f"IG container {i} failed: {data['error'].get('message')}")
@@ -397,14 +489,18 @@ def post_ig_carousel(public_urls: list[str], caption: str) -> str:
         time.sleep(2)
 
     print("[IG] Creating carousel container...")
+    carousel_params = {
+        "media_type": "CAROUSEL",
+        "children": ",".join(child_ids),
+        "caption": caption,
+        "access_token": PAGE_TOKEN,
+    }
+    if IG_LOCATION_ID:
+        carousel_params["location_id"] = IG_LOCATION_ID
+        print(f"     Location tag: {IG_LOCATION_ID}")
     resp = requests.post(
         f"{API_BASE}/{IG_ID}/media",
-        data={
-            "media_type": "CAROUSEL",
-            "children": ",".join(child_ids),
-            "caption": caption,
-            "access_token": PAGE_TOKEN,
-        },
+        data=carousel_params,
         timeout=60,
     )
     data = resp.json()
@@ -464,6 +560,40 @@ def save_results(fb_result: dict, ig_post_id: str) -> None:
 
     print(f"\nResults saved to {results_path}")
 
+    # Log the post for engagement tracking. The fetch_engagement() call
+    # requires a valid Meta token — it will silently skip if the token is
+    # expired. Re-run engagement_tracker.fetch_engagement(ig_post_id) after
+    # refreshing the page token to backfill this week's numbers.
+    if not DRY_RUN and not ig_post_id.startswith("FAILED"):
+        try:
+            sys.path.insert(0, str(ROOT))
+            from self_improve.engagement_tracker import log_post, fetch_engagement
+            events_file = ROOT / "data" / "events" / f"{WEEK_KEY}_all.json"
+            events_count = 0
+            if events_file.exists():
+                with open(events_file, encoding="utf-8") as ef:
+                    edata = json.load(ef)
+                events_count = edata.get("total_events", 0) if isinstance(edata, dict) else len(edata)
+            log_post(
+                post_id=ig_post_id,
+                post_type="carousel",
+                events_featured=events_count,
+                caption_style="eotw_hype",
+            )
+            print(f"[engagement] Post logged: {ig_post_id}")
+            # Attempt an immediate metrics fetch — will silently fail if token expired
+            metrics = fetch_engagement(ig_post_id)
+            if metrics:
+                print(f"[engagement] Live metrics: reach={metrics.get('reach',0)}, "
+                      f"impressions={metrics.get('impressions',0)}, saves={metrics.get('saves',0)}")
+            else:
+                print("[engagement] Metrics fetch skipped (token likely expired). "
+                      "Refresh page_access_token and re-run: "
+                      "python -c \"from self_improve.engagement_tracker import fetch_engagement; "
+                      f"fetch_engagement('{ig_post_id}')\"")
+        except Exception as _e:
+            print(f"[engagement] Tracking skipped: {_e}")
+
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -474,12 +604,61 @@ def main():
         print("  *** DRY RUN MODE — no actual posts will go out ***")
     print("=" * 60)
 
+    # Step 0: Hard approval gate — slides must be reviewed before posting
+    approval_path = SLIDES_DIR / "approval_status.json"
+    if not DRY_RUN:
+        if not approval_path.exists():
+            print(
+                f"\n[STOP] No approval_status.json found at {approval_path}\n"
+                f"       William has not reviewed this week's content.\n"
+                f"       Run the Sunday approval task, or create approval_status.json with approved=true.\n"
+                f"       Post ABORTED."
+            )
+            sys.exit(1)
+        with open(approval_path, encoding="utf-8") as _f:
+            _approval = json.load(_f)
+        if not _approval.get("approved"):
+            print(
+                f"\n[STOP] approval_status.json exists but approved={_approval.get('approved')}.\n"
+                f"       William has not approved this week's content.\n"
+                f"       Post ABORTED."
+            )
+            sys.exit(1)
+        print(f"[OK] Content approved ({_approval.get('approved_at', 'timestamp unknown')})")
+
+    # Step 0.5: Hard PREFLIGHT gate — verify events, text fit, descriptions,
+    # links. Blocks posting on any error. Runs even in dry-run (report only).
+    try:
+        from tools.preflight_post import run as _preflight_run
+    except Exception:
+        try:
+            import preflight_post as _pf  # when run from tools/
+            _preflight_run = _pf.run
+        except Exception:
+            _preflight_run = None
+    if _preflight_run is not None:
+        _pf_ok = _preflight_run(WEEK_KEY)
+        if not _pf_ok and not DRY_RUN:
+            print(
+                "\n[STOP] Pre-post preflight FAILED — see the blocking errors above\n"
+                "       and preflight_status.json. Post ABORTED."
+            )
+            sys.exit(1)
+        if not _pf_ok and DRY_RUN:
+            print("[DRY RUN] Preflight failed — a real post would be BLOCKED here.")
+    else:
+        print("[WARN] preflight_post unavailable — skipping verification (NOT recommended)")
+
     # Step 1: Validate slides
     slides = get_slides()
     validate_slides(slides)
 
-    # Step 2: Load caption
+    # Step 2: Load caption (strip any leaked harness/internal markers — these
+    # must NEVER reach a public post; preflight also hard-blocks them).
     caption = load_caption()
+    import re as _re
+    caption = _re.split(r'\s*(?:SUPERVISOR_TASK_COMPLETE|SUPERVISOR:|TASK_COMPLETE)\b.*$',
+                        caption, flags=_re.S)[0].rstrip()
     print(f"[OK] Caption loaded ({len(caption)} chars)")
 
     # Step 3: Host slides on lexingtongays.com for IG public URLs

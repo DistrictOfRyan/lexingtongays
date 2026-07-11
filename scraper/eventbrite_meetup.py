@@ -1,4 +1,4 @@
-"""Scraper for Eventbrite and Meetup LGBTQ events in Tulsa.
+"""Scraper for Eventbrite and Meetup LGBTQ events in Lexington.
 
 Eventbrite primary path:
 1. Public search API: https://www.eventbrite.com/api/v3/destination/search/
@@ -19,6 +19,7 @@ from typing import List, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraper.base import BaseScraper
+from scraper.relevance import compile_lgbtq_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ SEARCH_TERMS = [
     "rainbow",
     "sonic ray",  # The Sonic Ray — inclusive sound baths, community partner
     # General "things to do" so EVERY day has fun options to feature. Loosened
-    # relevance keeps the Tulsa-area ones; featured selection still floats the
+    # relevance keeps the Lexington-area ones; featured selection still floats the
     # queer/fun picks first and all of them land on the website.
     "music",
     "comedy",
@@ -50,22 +51,25 @@ LGBTQ_KEYWORDS = [
     "gender", "okeq", "sonic ray", "twisted arts", "council oak",
 ]
 
+_LGBTQ_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS)
+
+
 def _is_lgbtq_relevant(name: str, description: str = "", venue: str = "") -> bool:
-    """Return True if any field contains an LGBTQ keyword."""
+    """Return True if any field contains an LGBTQ keyword (word-boundary match)."""
     combined = " ".join([name, description, venue]).lower()
-    return any(kw in combined for kw in LGBTQ_KEYWORDS)
+    return bool(_LGBTQ_RX.search(combined))
 
 
-# Tulsa metro area — Tulsa proper plus the immediate suburbs we'll cover.
-TULSA_AREA_CITIES = {
-    "tulsa", "broken arrow", "bixby", "owasso", "sand springs",
+# Lexington metro area — Lexington proper plus the immediate suburbs we'll cover.
+LEXINGTON_AREA_CITIES = {
+    "lexington", "broken arrow", "bixby", "owasso", "sand springs",
     "jenks", "skiatook", "glenpool", "sapulpa", "catoosa", "coweta",
 }
 
 # Substrings that indicate the event is in another metro. Matched
 # against the full URL + name + venue + description, so a Meetup
 # group slug like 'consciousgirlfrienddallas' triggers a reject.
-NON_TULSA_HINTS = [
+NON_LEXINGTON_HINTS = [
     "dallas", "fortworth", "fort worth", "austin", "houston", "sanantonio", "san antonio",
     "okc", "oklahomacity", "oklahoma city",
     "kansascity", "kansas city",
@@ -77,23 +81,28 @@ NON_TULSA_HINTS = [
     "fayetteville", "bentonville", "rogers",
     "chicago", "minneapolis", "atlanta", "seattle",
     "norman", "stillwater", "lawton", "edmond",
+    # Mexico metros (2026-07-06: the machine now lives in Puerto Vallarta, and
+    # Meetup's IP geolocation started returning CDMX events - 8 leaked into W28).
+    "cdmx", "ciudad de mexico", "ciudad de méxico", "mexico city",
+    "polanco", "mazaryk", "condesa", "roma norte", "coyoacan", "coyoacán",
+    "guadalajara", "monterrey", "puerto vallarta", "zona romantica", "zona romántica",
 ]
 
 
-def _is_tulsa_area(name: str = "", url: str = "", venue: str = "",
+def _is_lexington_area(name: str = "", url: str = "", venue: str = "",
                     description: str = "", location: dict = None) -> bool:
-    """Best-effort filter: reject events we can prove are not in the Tulsa metro.
+    """Best-effort filter: reject events we can prove are not in the Lexington metro.
 
     Strategy: if any signal (url slug, name, venue, description, structured
-    address) names another city/region we know isn't Tulsa, bail. If we
+    address) names another city/region we know isn't Lexington, bail. If we
     have explicit structured location data, the city must be in
-    TULSA_AREA_CITIES or the region must be Oklahoma. Otherwise (no
+    LEXINGTON_AREA_CITIES or the region must be Oklahoma. Otherwise (no
     location info at all) we accept, since the search query already
-    targeted Tulsa.
+    targeted Lexington.
     """
     haystack = " ".join([url or "", name or "", venue or "", description or ""]).lower()
 
-    for hint in NON_TULSA_HINTS:
+    for hint in NON_LEXINGTON_HINTS:
         if hint in haystack:
             return False
 
@@ -103,29 +112,29 @@ def _is_tulsa_area(name: str = "", url: str = "", venue: str = "",
             city = (addr.get("addressLocality") or "").lower().strip()
             region = (addr.get("addressRegion") or "").lower().strip()
             if city:
-                # Explicit city — must be Tulsa-area.
-                return city in TULSA_AREA_CITIES
+                # Explicit city — must be Lexington-area.
+                return city in LEXINGTON_AREA_CITIES
             if region and region not in ("ok", "oklahoma"):
                 # Explicit non-OK region.
                 return False
         loc_name = (location.get("name") or "").lower()
         if loc_name:
-            # If venue name explicitly mentions a non-Tulsa city we already
+            # If venue name explicitly mentions a non-Lexington city we already
             # caught it above. Otherwise accept.
             pass
 
     return True
 
-# Tulsa bounding box: SW lat/lon, NE lat/lon
+# Lexington bounding box: SW lat/lon, NE lat/lon
 # Format for Eventbrite API: "lat_min,lng_min,lat_max,lng_max"
-TULSA_BBOX = "36.05,-96.05,36.25,-95.85"
+LEXINGTON_BBOX = "36.05,-96.05,36.25,-95.85"
 
 EVENTBRITE_API = "https://www.eventbrite.com/api/v3/destination/search/"
-EVENTBRITE_SEARCH_URL = "https://www.eventbrite.com/d/ky--lexington/{query}/"
+EVENTBRITE_SEARCH_URL = "https://www.eventbrite.com/d/ok--lexington/{query}/"
 
 
 class EventbriteScraper(BaseScraper):
-    """Search Eventbrite for Tulsa LGBTQ events.
+    """Search Eventbrite for Lexington LGBTQ events.
 
     Primary: public search API (returns proper JSON with dates).
     Fallback 1: JSON-LD on search result pages.
@@ -188,7 +197,7 @@ class EventbriteScraper(BaseScraper):
                     params={
                         "page_size": 50,
                         "q": term,
-                        "bbox": TULSA_BBOX,
+                        "bbox": LEXINGTON_BBOX,
                     },
                     timeout=15,
                 )
@@ -348,11 +357,16 @@ class EventbriteScraper(BaseScraper):
 
 
 class MeetupScraper(BaseScraper):
-    """Search Meetup's public pages for Tulsa LGBTQ events."""
+    """Search Meetup's public pages for Lexington LGBTQ events."""
 
     source_name = "meetup"
 
-    SEARCH_URL = "https://www.meetup.com/find/?keywords={query}&location=Lexington%2C+KY"
+    # location uses Meetup's canonical us--ok--lexington slug: the free-text
+    # "Lexington, KY" form gets ignored when Meetup can't geocode it and falls back
+    # to IP geolocation - which, with the machine in Puerto Vallarta, returned
+    # Mexico City events (2026-07-06, 8 CDMX leaks in W28).
+    SEARCH_URL = ("https://www.meetup.com/find/?keywords={query}"
+                  "&location=us--ok--lexington&distance=twentyFiveMiles")
 
     def scrape(self) -> List[Dict]:
         events = []
@@ -411,9 +425,9 @@ class MeetupScraper(BaseScraper):
                         venue = location.get("name", "")
                     description = item.get("description", "")[:300]
                     url = item.get("url", "")
-                    if not _is_tulsa_area(name=name, url=url, venue=venue,
+                    if not _is_lexington_area(name=name, url=url, venue=venue,
                                           description=description, location=location):
-                        logger.debug(f"[meetup] filtered non-Tulsa event: {name} ({url})")
+                        logger.debug(f"[meetup] filtered non-Lexington event: {name} ({url})")
                         continue
                     events.append(self.make_event(
                         name=name,
@@ -464,8 +478,8 @@ class MeetupScraper(BaseScraper):
             venue_el = card.select_one("[class*='venue'], [class*='location']")
             venue = venue_el.get_text(strip=True) if venue_el else ""
 
-            if not _is_tulsa_area(name=name, url=url, venue=venue):
-                logger.debug(f"[meetup] filtered non-Tulsa card: {name} ({url})")
+            if not _is_lexington_area(name=name, url=url, venue=venue):
+                logger.debug(f"[meetup] filtered non-Lexington card: {name} ({url})")
                 continue
 
             events.append(self.make_event(
@@ -488,8 +502,8 @@ class MeetupScraper(BaseScraper):
             if "/events/" in href and text and len(text) > 10 and text not in seen:
                 seen.add(text)
                 full_url = href if href.startswith("http") else "https://www.meetup.com" + href
-                if not _is_tulsa_area(name=text, url=full_url):
-                    logger.debug(f"[meetup] filtered non-Tulsa link: {text} ({full_url})")
+                if not _is_lexington_area(name=text, url=full_url):
+                    logger.debug(f"[meetup] filtered non-Lexington link: {text} ({full_url})")
                     continue
                 events.append(self.make_event(
                     name=text,

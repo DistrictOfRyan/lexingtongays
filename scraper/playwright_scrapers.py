@@ -25,21 +25,41 @@ from typing import List, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraper.base import BaseScraper
+from scraper.relevance import compile_lgbtq_keywords
 
 logger = logging.getLogger(__name__)
 
 # ── LGBTQ keyword filter ───────────────────────────────────────────────────────
 
 LGBTQ_KEYWORDS = [
+    # Explicit identity
     "lgbtq", "queer", "gay", "lesbian", "bi", "trans", "drag", "pride",
     "rainbow", "dyke", "nonbinary", "non-binary", "gender", "equality",
-    "affirming", "inclusive", "homo", "sapphic",
+    "affirming", "inclusive", "homo", "sapphic", "two-spirit", "twospirit",
+    # Queer-adjacent / community-coded
+    "oddities", "curiosities",
+    "burlesque", "cabaret",
+    "feminist", "radical",
+    "night market", "art market", "bazaar", "market",
+    "wiz",
+    "greenwood", "black wall street",
+    "boots riley",
+    # Cultural event types
+    "screening", "film festival", "documentary",
+    "exhibition", "opening reception", "art opening",
+    "workshop", "panel discussion", "panel", "lecture",
+    "fundraiser", "benefit show", "benefit concert",
+    "cultural festival", "heritage",
+    "open mic", "poetry",
 ]
+
+
+_LGBTQ_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS)
 
 
 def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
     combined = (name + " " + description).lower()
-    return any(kw in combined for kw in LGBTQ_KEYWORDS)
+    return bool(_LGBTQ_RX.search(combined))
 
 
 # ── Week range helper ──────────────────────────────────────────────────────────
@@ -418,6 +438,37 @@ class FreedomOklahomaScraper(PlaywrightBaseScraper):
         return events
 
 
+class LexingtonArtistFellowshipScraper(PlaywrightBaseScraper):
+    """Lexington Artist Fellowship -- Flagship space + main calendar (Squarespace, JS-rendered).
+
+    Flagship (112 N Boston Ave) hosts screenings, panels, lectures, artist talks,
+    workshops, performances, and radical cultural programming. No LGBTQ filter —
+    TAF is a trusted arts community venue; all events are relevant.
+    """
+
+    source_name = "lexington_artist_fellowship"
+    BASE_URL = "https://www.lexingtonartistfellowship.org"
+    EVENTS_URL = "https://www.lexingtonartistfellowship.org/calendar"
+    DEFAULT_VENUE = "Flagship / Lexington Artist Fellowship, 112 N Boston Ave"
+    PRIORITY = 2
+
+    def scrape(self) -> List[Dict]:
+        html = self.fetch_page_js(
+            self.EVENTS_URL,
+            wait_for_selector=".eventlist-event, .summary-item, [class*='eventlist']",
+            timeout=20000,
+        )
+        if not html:
+            logger.warning(f"[{self.source_name}] No HTML returned from Playwright")
+            return []
+
+        events = self._extract_squarespace_html(html, self.BASE_URL, self.DEFAULT_VENUE, self.PRIORITY)
+        # No LGBTQ filter — Flagship programs screenings, lectures, radical cultural events;
+        # queer Lexingtonns are in that audience.
+        logger.info(f"[{self.source_name}] Found {len(events)} events (all kept, no filter)")
+        return events
+
+
 class TwistedArtsScraper(PlaywrightBaseScraper):
     """Twisted Arts / Twisted Fest -- Squarespace events page (JS-rendered)."""
 
@@ -593,10 +644,10 @@ class EventbriteJSScraper(PlaywrightBaseScraper):
     PRIORITY = 2
 
     SEARCH_PATHS = [
-        "https://www.eventbrite.com/d/ky--lexington/lgbtq/",
-        "https://www.eventbrite.com/d/ky--lexington/pride/",
-        "https://www.eventbrite.com/d/ky--lexington/queer/",
-        "https://www.eventbrite.com/d/ky--lexington/drag/",
+        "https://www.eventbrite.com/d/ok--lexington/lgbtq/",
+        "https://www.eventbrite.com/d/ok--lexington/pride/",
+        "https://www.eventbrite.com/d/ok--lexington/queer/",
+        "https://www.eventbrite.com/d/ok--lexington/drag/",
     ]
 
     def scrape(self) -> List[Dict]:
@@ -877,80 +928,244 @@ class VisitLexingtonScraper(PlaywrightBaseScraper):
 class CircleCinemaScraper(PlaywrightBaseScraper):
     """Circle Cinema -- independent art-house cinema in Lexington.
 
-    JS-rendered React app. Tries JSON-LD first, then generic event containers.
-    LGBTQ filter applied: only keeps queer-relevant films and events.
+    circlecinema.org itself is a Wix React shell with NO scrapable schedule:
+    /movies, /events and /schedule all render the Wix 404 page, JSON-LD is only
+    WebSite/LocalBusiness, and the wix-warmup-data blob resolves titles to image
+    filenames. The real film schedule lives on the Easy-Ware ticketing portal
+    (circlecinema.easy-ware-ticketing.com), which is a Blazor Server app: data
+    arrives over a SignalR WebSocket, so there is no JSON XHR to consume -- the
+    rendered DOM is the API. (Diagnosed 2026-07-06.)
+
+    Strategy: load the /events grid (#eventGrid .prodCard) and read each film's
+    visible showtimes straight off the card (.prodPerfItem). The grid truncates
+    to 5 showtimes behind a "More..." button, which is a Blazor client-side
+    route to /eventsByMovie/<id> carrying the synopsis (.movieSynopsis) and the
+    FULL showtime list (.perfCard -> .dayTitle "Monday July 6" + .timeTitle
+    "3:20 PM") -- films with "More..." get that visit. For the rest, the
+    "More Info" button opens a Blazored.Modal dialog (.bm-container) whose
+    .synopsis div supplies the description; it only closes via its
+    button.bm-close (Escape does nothing). Emits one event per film per date
+    with that day's remaining showtimes in the description. LGBTQ filter
+    applied on name + synopsis: only queer-relevant films kept.
+
+    NOTE: Blazor re-renders the DOM on every interaction, so element handles go
+    stale after any click -- always re-query via locators, never cache handles.
     """
 
     source_name = "circle_cinema"
     BASE_URL = "https://www.circlecinema.org"
+    TICKETING_URL = "https://circlecinema.easy-ware-ticketing.com/events"
     DEFAULT_VENUE = "Circle Cinema, 10 S Lewis Ave, Lexington"
     PRIORITY = 2
+    MAX_FILMS = 60  # safety cap on detail-page visits
 
-    URLS_TO_TRY = [
-        "https://www.circlecinema.org/",
-        "https://www.circlecinema.org/movies",
-        "https://www.circlecinema.org/events",
-        "https://www.circlecinema.org/schedule",
+    # Film synopses (Fandango copy) often describe queer romance without any
+    # identity keyword -- "Sonya, unfamiliar with dating girls..." carries zero
+    # LGBTQ_KEYWORDS hits. These phrases supplement the shared list for
+    # synopsis text specifically.
+    SYNOPSIS_LGBTQ_PHRASES = [
+        "coming out", "same-sex", "same sex", "dating girls", "dating boys",
+        "her girlfriend", "his boyfriend", "gender identity",
     ]
+    _FILM_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS + SYNOPSIS_LGBTQ_PHRASES)
+
+    def _film_is_lgbtq(self, title: str, synopsis: str) -> bool:
+        """_is_lgbtq_relevant plus the synopsis-phrase supplements, checked
+        against the FULL synopsis rather than the truncated event description."""
+        combined = f"{title} {synopsis}".lower()
+        return bool(self._FILM_RX.search(combined))
+
+    _MONTH_NUM = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+
+    def _parse_month_day(self, text: str) -> str:
+        """Parse 'Jul 6' / 'Monday July 6' -> YYYY-MM-DD (year inferred).
+
+        The ticketing site never shows a year. Showtimes are always current or
+        upcoming, so a parsed date landing >60 days in the past means the
+        listing has wrapped into the next calendar year (Dec -> Jan)."""
+        import re as _re
+        m = _re.search(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})\s*$", (text or "").strip())
+        if not m:
+            return ""
+        month = self._MONTH_NUM.get(m.group(1)[:3].lower())
+        day = int(m.group(2))
+        if not month:
+            return ""
+        today = datetime.now()
+        try:
+            dt = datetime(today.year, month, day)
+        except ValueError:
+            return ""
+        if (dt - today).days < -60:
+            dt = datetime(today.year + 1, month, day)
+        return dt.strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _time_sort_key(t: str):
+        try:
+            return datetime.strptime(t.strip(), "%I:%M %p")
+        except ValueError:
+            return datetime.max
+
+    def _wait_for_grid(self, page):
+        page.wait_for_selector("#eventGrid .prodCard .prodTitle", timeout=30000)
+        page.wait_for_timeout(1200)  # let the Blazor circuit finish streaming
+
+    def _reset_to_grid(self, page):
+        page.goto(self.TICKETING_URL, wait_until="domcontentloaded", timeout=45000)
+        self._wait_for_grid(page)
+
+    def _parse_card_showtimes(self, card) -> List:
+        """Parse a grid card's visible .prodPerfItem rows into (date, time) pairs."""
+        import re as _re
+        showtimes = []
+        for item in card.locator(".prodPerfItem").all():
+            text = item.inner_text().replace("\xa0", " ")
+            m = _re.search(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)", text)
+            if not m:
+                continue
+            date_str = self._parse_month_day(f"{m.group(1)} {m.group(2)}")
+            if date_str:
+                showtimes.append((date_str, m.group(3).strip()))
+        return showtimes
+
+    def _full_showtimes_via_detail(self, page, index: int) -> Optional[Dict]:
+        """Click film #index's 'More...' -> /eventsByMovie/<id>; return synopsis, url, full showtimes."""
+        import re as _re
+        card = page.locator("#eventGrid .prodCard").nth(index)
+        card.locator("button", has_text=_re.compile(r"^\s*More\.\.\.\s*$")).first.click(timeout=8000)
+        page.wait_for_url("**/eventsByMovie/**", timeout=15000)
+        page.wait_for_selector(".perfCard", timeout=15000)
+        page.wait_for_timeout(600)
+        detail_url = page.url
+
+        synopsis = ""
+        syn_loc = page.locator(".movieSynopsis")
+        if syn_loc.count():
+            synopsis = _re.sub(r"^\s*Synopsis\s*", "", syn_loc.first.inner_text(), flags=_re.I)
+            synopsis = " ".join(synopsis.split())
+
+        showtimes = []  # list of (YYYY-MM-DD, "3:20 PM")
+        for pc in page.locator(".perfCard").all():
+            day_loc = pc.locator(".dayTitle")
+            time_loc = pc.locator(".timeTitle")
+            if not day_loc.count() or not time_loc.count():
+                continue
+            date_str = self._parse_month_day(day_loc.first.inner_text())
+            time_str = time_loc.first.inner_text().strip()
+            if date_str and time_str:
+                showtimes.append((date_str, time_str))
+
+        self._reset_to_grid(page)
+        return {"synopsis": synopsis, "url": detail_url, "showtimes": showtimes}
+
+    def _synopsis_via_modal(self, page, index: int) -> str:
+        """Click film #index's 'More Info' -> Blazored.Modal; read .synopsis and close it."""
+        card = page.locator("#eventGrid .prodCard").nth(index)
+        card.locator("button.btnDetails").first.click(timeout=8000)
+        page.wait_for_selector(".bm-container .synopsis", timeout=10000)
+        synopsis = " ".join(page.locator(".bm-container .synopsis").first.inner_text().split())
+        try:
+            page.locator(".bm-container button.bm-close").first.click(timeout=4000)
+            page.wait_for_selector(".bm-container", state="detached", timeout=5000)
+        except Exception:
+            self._reset_to_grid(page)  # stuck modal blocks every later click
+        return synopsis
 
     def scrape(self) -> List[Dict]:
-        from bs4 import BeautifulSoup
+        if not self._browser:
+            logger.error(f"[{self.source_name}] Browser not started")
+            return []
+
+        _, sunday = _get_week_range()
+        week_end = sunday.strftime("%Y-%m-%d")
+
+        context = self._browser.new_context(
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
+            locale="en-US",
+        )
+        films = []
+        try:
+            import re as _re
+            page = context.new_page()
+            self._reset_to_grid(page)
+
+            # Pre-scan the grid: title + visible showtimes + truncation flag per
+            # card. Grid showtimes are chronological, so if a film's FIRST
+            # visible showtime is already past this week's Sunday, every
+            # showtime is -- skip it entirely.
+            cards = page.locator("#eventGrid .prodCard")
+            plan = []
+            for i in range(min(cards.count(), self.MAX_FILMS)):
+                card = cards.nth(i)
+                title_loc = card.locator(".prodTitle")
+                if not title_loc.count():
+                    continue
+                title = title_loc.first.inner_text().strip()
+                if not title:
+                    continue
+                showtimes = self._parse_card_showtimes(card)
+                if not showtimes or showtimes[0][0] > week_end:
+                    continue
+                has_more = card.locator(
+                    "button", has_text=_re.compile(r"^\s*More\.\.\.\s*$")).count() > 0
+                plan.append({"index": i, "title": title,
+                             "showtimes": showtimes, "has_more": has_more})
+            logger.info(f"[{self.source_name}] {cards.count()} films on grid, "
+                        f"{len(plan)} start within current week")
+
+            for film in plan:
+                synopsis, url = "", self.TICKETING_URL
+                try:
+                    if film["has_more"]:
+                        detail = self._full_showtimes_via_detail(page, film["index"])
+                        synopsis = detail["synopsis"]
+                        url = detail["url"]
+                        if detail["showtimes"]:
+                            film["showtimes"] = detail["showtimes"]
+                    else:
+                        synopsis = self._synopsis_via_modal(page, film["index"])
+                except Exception as e:
+                    logger.warning(f"[{self.source_name}] detail/modal failed for "
+                                   f"'{film['title']}': {e}")
+                    try:
+                        self._reset_to_grid(page)  # never leave a modal/detail page open
+                    except Exception:
+                        pass
+                films.append({"title": film["title"], "synopsis": synopsis,
+                              "url": url, "showtimes": film["showtimes"]})
+        finally:
+            try:
+                context.close()
+            except Exception:
+                pass
+
+        # Filter to LGBTQ/community-relevant films on the FULL synopsis, then
+        # emit one event per film per date with that day's showtimes listed.
+        kept = [f for f in films if self._film_is_lgbtq(f["title"], f["synopsis"])]
+        logger.info(f"[{self.source_name}] {len(films)} films scraped, "
+                    f"{len(kept)} LGBTQ/community-relevant")
         all_events = []
+        for film in kept:
+            by_date = {}
+            for date_str, time_str in film["showtimes"]:
+                by_date.setdefault(date_str, []).append(time_str)
+            for date_str, times in sorted(by_date.items()):
+                times = sorted(set(times), key=self._time_sort_key)
+                description = film["synopsis"][:400]
+                if len(times) > 1:
+                    description = (description + " Showtimes: " + ", ".join(times)).strip()
+                all_events.append(self.make_event(
+                    name=film["title"], date=date_str, time=times[0],
+                    venue=self.DEFAULT_VENUE, description=description,
+                    url=film["url"], priority=self.PRIORITY,
+                ))
 
-        for url in self.URLS_TO_TRY:
-            html = self.fetch_page_js(
-                url,
-                wait_for_selector="[class*='movie'], [class*='event'], [class*='film'], article, h2",
-                timeout=20000,
-            )
-            if not html:
-                continue
-
-            soup = BeautifulSoup(html, "html.parser")
-
-            # Try JSON-LD
-            events = self._extract_json_ld_from_soup(soup, self.DEFAULT_VENUE, self.PRIORITY)
-
-            # Generic fallback
-            if not events:
-                containers = (
-                    soup.select("[class*='event']")
-                    or soup.select("[class*='movie']")
-                    or soup.select("[class*='film']")
-                    or soup.select("article")
-                )
-                for container in containers[:30]:
-                    name_el = container.select_one("h1, h2, h3, h4, [class*='title']")
-                    if not name_el:
-                        continue
-                    name = name_el.get_text(strip=True)
-                    if not name or len(name) < 5:
-                        continue
-                    link_el = container.find("a", href=True)
-                    url_ev = ""
-                    if link_el:
-                        href = link_el["href"]
-                        url_ev = href if href.startswith("http") else self.BASE_URL + href
-                    time_el = container.select_one("time[datetime]")
-                    date_str, time_str = "", ""
-                    if time_el:
-                        date_str, time_str = _parse_iso_datetime(time_el.get("datetime", ""))
-                    desc_el = container.select_one("p, [class*='description']")
-                    description = desc_el.get_text(strip=True)[:500] if desc_el else ""
-                    events.append(self.make_event(
-                        name=name, date=date_str, time=time_str,
-                        venue=self.DEFAULT_VENUE, description=description,
-                        url=url_ev, priority=self.PRIORITY,
-                    ))
-
-            if events:
-                all_events.extend(events)
-                break  # Don't hit more URLs if we found something
-
-        # Filter to LGBTQ-relevant only
-        before = len(all_events)
-        all_events = [e for e in all_events if _is_lgbtq_relevant(e.get("name", ""), e.get("description", ""))]
-        logger.info(f"[{self.source_name}] {before} total, {len(all_events)} LGBTQ-relevant")
+        logger.info(f"[{self.source_name}] {len(all_events)} events emitted")
         return all_events
 
 
@@ -981,14 +1196,23 @@ class PhilbrookMuseumScraper(PlaywrightBaseScraper):
 
         events = self._extract_json_ld_from_soup(soup, self.DEFAULT_VENUE, self.PRIORITY)
         if not events:
+            # 2026-07-06: Philbrook's Webflow calendar has NO time[datetime] —
+            # dates are plain text ("Jul 8, 2026" in .event-date, "9:30 am" in
+            # .event-time). The old ISO-only parse produced 18 undated events
+            # every run, all silently dropped by the week filter. Nested
+            # [class*='event'] matches also duplicated every card, so dedupe
+            # by (name, date).
             containers = (
-                soup.select("[class*='event-card']")
+                soup.select("[class*='events-item']")
+                or soup.select("[class*='event-card']")
                 or soup.select("[class*='eventCard']")
                 or soup.select("[class*='event']")
                 or soup.select("article")
             )
-            for container in containers[:30]:
-                name_el = container.select_one("h1, h2, h3, h4, [class*='title']")
+            seen = set()
+            for container in containers[:60]:
+                name_el = container.select_one(
+                    "[class*='event-card-title'], h1, h2, h3, h4, [class*='title']")
                 if not name_el:
                     continue
                 name = name_el.get_text(strip=True)
@@ -999,10 +1223,24 @@ class PhilbrookMuseumScraper(PlaywrightBaseScraper):
                 if link_el:
                     href = link_el["href"]
                     url = href if href.startswith("http") else self.BASE_URL + href
-                time_el = container.select_one("time[datetime]")
                 date_str, time_str = "", ""
+                time_el = container.select_one("time[datetime]")
                 if time_el:
                     date_str, time_str = _parse_iso_datetime(time_el.get("datetime", ""))
+                if not date_str:
+                    date_el = container.select_one("[class*='event-date']")
+                    if date_el:
+                        parsed = self.parse_date_flexible(date_el.get_text(strip=True))
+                        if parsed and re.match(r"\d{4}-\d{2}-\d{2}", parsed):
+                            date_str = parsed[:10]
+                if not time_str:
+                    t_el = container.select_one("[class*='event-time']")
+                    if t_el:
+                        time_str = t_el.get_text(strip=True)[:20]
+                key = (name.lower(), date_str)
+                if key in seen:
+                    continue
+                seen.add(key)
                 desc_el = container.select_one("p, [class*='description']")
                 description = desc_el.get_text(strip=True)[:500] if desc_el else ""
                 events.append(self.make_event(
@@ -1011,10 +1249,247 @@ class PhilbrookMuseumScraper(PlaywrightBaseScraper):
                     url=url, priority=self.PRIORITY,
                 ))
 
-        # Filter to LGBTQ-relevant only
-        before = len(events)
-        events = [e for e in events if _is_lgbtq_relevant(e.get("name", ""), e.get("description", ""))]
-        logger.info(f"[{self.source_name}] {before} total, {len(events)} LGBTQ-relevant")
+        # No strict LGBTQ filter — Philbrook is a known queer-welcoming institution
+        # (hosts Pride nights, queer artist exhibitions, inclusive programming).
+        # Major art openings and community events are relevant to our audience.
+        logger.info(f"[{self.source_name}] {len(events)} events (all kept, no filter)")
+        return events
+
+
+class WOMPAScraper(PlaywrightBaseScraper):
+    """WOMPA - Event Venue & Creative Community, Lexington.
+
+    URL is a Wix-hosted JS app (app.wompalexington.com) — requires Playwright.
+    WOMPA is a trusted community venue; ALL events are returned (no LGBTQ filter).
+    """
+
+    source_name = "wompa_lexington"
+    BASE_URL = "https://wompalexington.com"
+    EVENTS_URL = "https://app.wompalexington.com/events-1/c/0"
+    DEFAULT_VENUE = "WOMPA, 108 N Boston Ave, Lexington"
+    PRIORITY = 1
+
+    # WOMPA's site (app.wompalexington.com) is a GoodBarber app, NOT Wix. Events are
+    # served as JSON from the GoodBarber content API — far more reliable than
+    # scraping the JS-rendered DOM (the old Wix selectors never matched and the
+    # scraper silently returned 0 even when events existed). App id + events
+    # section id were extracted from the page's gb-app-state blob.
+    GOODBARBER_APP_ID = "3682793"
+    GOODBARBER_EVENTS_SECTION = "60857482"
+    GOODBARBER_API = (
+        "https://api.goodbarber.net/front/get_items/"
+        "{app}/{section}/?category_index=0"
+    )
+
+    def scrape(self) -> List[Dict]:
+        """Fetch WOMPA events from the GoodBarber JSON API (with DOM fallback)."""
+        import requests as _requests
+        import html as _html
+        import re as _re
+        from datetime import datetime, timezone
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/134.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+        }
+        url = self.GOODBARBER_API.format(
+            app=self.GOODBARBER_APP_ID, section=self.GOODBARBER_EVENTS_SECTION
+        )
+        raw_items: List[Dict] = []
+        pages = 0
+        try:
+            while url and pages < 5:
+                resp = _requests.get(url, headers=headers, timeout=20)
+                if resp.status_code != 200:
+                    logger.warning(
+                        f"[{self.source_name}] GoodBarber API status "
+                        f"{resp.status_code} for {url}"
+                    )
+                    break
+                data = resp.json()
+                items = data.get("items") or []
+                raw_items.extend(items)
+                pages += 1
+                url = data.get("next_page") if items else None
+        except Exception as e:
+            logger.error(
+                f"[{self.source_name}] GoodBarber API failed ({e}); "
+                "falling back to DOM scrape"
+            )
+            return self._scrape_dom_fallback()
+
+        if not raw_items:
+            logger.info(
+                f"[{self.source_name}] GoodBarber events section empty "
+                "(0 items); WOMPA has no events posted right now"
+            )
+            return []
+
+        logger.debug(
+            f"[{self.source_name}] GoodBarber first-item keys: "
+            f"{list(raw_items[0].keys())}"
+        )
+
+        def _strip(s) -> str:
+            return _html.unescape(_re.sub(r"<[^>]+>", " ", str(s or ""))).strip()
+
+        def _gb_date(val):
+            """GoodBarber dates: unix ts (s or ms) or ISO string -> (date, time)."""
+            if val in (None, "", 0, "0"):
+                return "", ""
+            try:
+                iv = int(float(val))
+                if iv > 10_000_000_000:  # milliseconds -> seconds
+                    iv //= 1000
+                dt = datetime.fromtimestamp(iv, tz=timezone.utc)
+                return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+            except (ValueError, TypeError):
+                s = str(val)
+                if "T" in s:
+                    return _parse_iso_datetime(s)
+                return BaseScraper.parse_date_flexible(s), ""
+
+        events: List[Dict] = []
+        for it in raw_items:
+            name = _strip(it.get("title") or it.get("name"))
+            if not name or len(name) < 3:
+                continue
+
+            date_str, time_str = "", ""
+            for dk in ("startDate", "start_date", "date", "start",
+                       "beginDate", "timestamp", "when"):
+                if it.get(dk):
+                    date_str, time_str = _gb_date(it.get(dk))
+                    if date_str:
+                        break
+
+            venue = (it.get("placeName") or it.get("place_name")
+                     or it.get("address") or it.get("location"))
+            if isinstance(venue, dict):
+                venue = venue.get("address") or venue.get("name")
+            venue = _strip(venue) or self.DEFAULT_VENUE
+
+            description = _strip(
+                it.get("text") or it.get("content")
+                or it.get("subtitle") or it.get("description")
+            )[:500]
+
+            url_ = it.get("url") or it.get("link") or ""
+            if url_ and not str(url_).startswith("http"):
+                url_ = self.BASE_URL + str(url_)
+
+            events.append(self.make_event(
+                name=name,
+                date=date_str,
+                time=time_str,
+                venue=venue,
+                description=description,
+                url=url_,
+                priority=self.PRIORITY,
+            ))
+
+        # No LGBTQ filter — WOMPA is a trusted community venue, all events relevant
+        logger.info(
+            f"[{self.source_name}] Found {len(events)} events via "
+            "GoodBarber API (no filter applied)"
+        )
+        return events
+
+    def _scrape_dom_fallback(self) -> List[Dict]:
+        """Legacy DOM scrape (kept as a fallback if the API path fails)."""
+        from bs4 import BeautifulSoup
+
+        html = self.fetch_page_js(
+            self.EVENTS_URL,
+            wait_for_selector=(
+                "[data-hook='events-widget-event-card'], "
+                "[data-hook='list-item'], "
+                "[class*='eventsGallery'], "
+                "[class*='event-list'], "
+                "article, [class*='event']"
+            ),
+            timeout=25000,
+        )
+        if not html:
+            logger.warning(f"[{self.source_name}] No HTML returned from Playwright")
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Try JSON-LD first
+        events = self._extract_json_ld_from_soup(soup, self.DEFAULT_VENUE, self.PRIORITY)
+        if events:
+            logger.info(f"[{self.source_name}] JSON-LD: {len(events)} events")
+            return events
+
+        # Wix Events widget selectors (Wix has changed these over time — try all)
+        containers = (
+            soup.select("[data-hook='events-widget-event-card']")
+            or soup.select("[data-hook='list-item']")
+            or soup.select("[class*='evGallery-item']")
+            or soup.select("[class*='evWidget-item']")
+            or soup.select("[class*='event-list-item']")
+            or soup.select("[class*='eventCard']")
+            or soup.select("article[class*='event']")
+            or soup.select("li[class*='event']")
+        )
+
+        logger.debug(f"[{self.source_name}] Found {len(containers)} candidate containers")
+
+        for container in containers[:30]:
+            name_el = container.select_one(
+                "h1, h2, h3, h4, "
+                "[data-hook='event-title'], "
+                "[class*='title'], "
+                "[class*='name']"
+            )
+            if not name_el:
+                continue
+            name = name_el.get_text(strip=True)
+            if not name or len(name) < 4:
+                continue
+
+            link_el = container.find("a", href=True)
+            url = ""
+            if link_el:
+                href = link_el["href"]
+                url = href if href.startswith("http") else self.BASE_URL + href
+
+            date_str, time_str = "", ""
+            time_el = container.select_one(
+                "time[datetime], "
+                "[data-hook='event-scheduled-date'], "
+                "[class*='date'], "
+                "[class*='Date']"
+            )
+            if time_el:
+                raw = time_el.get("datetime", "") or time_el.get_text(strip=True)
+                if raw and "T" in raw:
+                    date_str, time_str = _parse_iso_datetime(raw)
+                else:
+                    date_str = BaseScraper.parse_date_flexible(raw)
+
+            desc_el = container.select_one(
+                "p, [data-hook='event-description'], [class*='description'], [class*='excerpt']"
+            )
+            description = desc_el.get_text(strip=True)[:500] if desc_el else ""
+
+            events.append(self.make_event(
+                name=name,
+                date=date_str,
+                time=time_str,
+                venue=self.DEFAULT_VENUE,
+                description=description,
+                url=url,
+                priority=self.PRIORITY,
+            ))
+
+        # No LGBTQ filter — WOMPA is a trusted community venue, all events relevant
+        logger.info(f"[{self.source_name}] Found {len(events)} events (no filter applied)")
         return events
 
 
@@ -1128,10 +1603,431 @@ class OKEQPlaywrightScraper(PlaywrightBaseScraper):
         return events
 
 
+# ── Flexible venue scraper (Tribe / Squarespace / JSON-LD / Wix) ───────────────
+
+class _FlexibleVenueScraper(PlaywrightBaseScraper):
+    """Base class for venues whose CMS we don't know upfront.
+
+    Tries JSON-LD → The Events Calendar (Tribe) → Squarespace → Wix selectors
+    against one or more candidate URLs. Subclasses set source_name, BASE_URL,
+    URLS_TO_TRY, DEFAULT_VENUE, PRIORITY. No LGBTQ keyword filter — these
+    venues are added to LGBTQ_SOURCES so the runner trusts their curation.
+    """
+
+    URLS_TO_TRY: List[str] = []
+    WAIT_SELECTOR = (
+        ".tribe-events-calendar, .tribe-event, "
+        ".tribe-events-calendar-list__event, "
+        ".eventlist-event, .summary-item, "
+        "[data-hook='events-widget-event-card'], "
+        "[class*='tribe-event'], [class*='eventlist'], "
+        "article, main"
+    )
+
+    def scrape(self) -> List[Dict]:
+        from bs4 import BeautifulSoup
+
+        for url in self.URLS_TO_TRY:
+            html = self.fetch_page_js(url, wait_for_selector=self.WAIT_SELECTOR, timeout=25000)
+            if not html:
+                logger.debug(f"[{self.source_name}] No HTML from {url}, trying next")
+                continue
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            title_el = soup.find("title")
+            page_title = title_el.get_text(strip=True).lower() if title_el else ""
+            if "404" in page_title or "not found" in page_title:
+                logger.debug(f"[{self.source_name}] 404 at {url}, trying next")
+                continue
+
+            events = self._extract_json_ld_from_soup(soup, self.DEFAULT_VENUE, self.PRIORITY)
+            if not events:
+                events = self._extract_tribe_events(soup)
+            if not events:
+                events = self._extract_squarespace_html(html, self.BASE_URL, self.DEFAULT_VENUE, self.PRIORITY)
+
+            if events:
+                logger.info(f"[{self.source_name}] Found {len(events)} events at {url}")
+                return events
+
+            logger.debug(f"[{self.source_name}] No events parsed from {url}, trying next")
+
+        logger.warning(f"[{self.source_name}] No events found across all URLs")
+        return []
+
+    def _extract_tribe_events(self, soup) -> List[Dict]:
+        """Reuse OKEQPlaywrightScraper's Tribe parser if available; otherwise no-op."""
+        try:
+            return OKEQPlaywrightScraper._extract_tribe_events(self, soup)
+        except Exception:
+            return []
+
+
+class ShambhalaLexingtonScraper(_FlexibleVenueScraper):
+    """Shambhala Meditation Center of Lexington — meditation programs, sound baths,
+    workshops, retreats. Curated wellness calendar, queer-welcoming community space.
+    """
+    source_name = "shambhala_lexington"
+    BASE_URL = "https://lexington.shambhala.org"
+    URLS_TO_TRY = [
+        "https://lexington.shambhala.org/events/",
+        "https://lexington.shambhala.org/calendar/",
+        "https://lexington.shambhala.org/programs/",
+    ]
+    DEFAULT_VENUE = "Shambhala Meditation Center of Lexington"
+    PRIORITY = 2
+
+
+class BeLoveYogaScraper(_FlexibleVenueScraper):
+    """Be Love Yoga Studio (Pearl District / Jenks) — workshops, sound baths,
+    kirtan, donation classes, the Big Om Yoga Retreat. Queer-welcoming.
+    """
+    source_name = "be_love_yoga"
+    BASE_URL = "https://beloveyogastudio.com"
+    URLS_TO_TRY = [
+        "https://beloveyogastudio.com/events/",
+        "https://beloveyogastudio.com/workshops/",
+        "https://beloveyogastudio.com/calendar/",
+    ]
+    DEFAULT_VENUE = "Be Love Yoga Studio, Lexington"
+    PRIORITY = 2
+
+
+class OpenEyeYogaScraper(_FlexibleVenueScraper):
+    """Open Eye Yoga (Brookside) — power/restorative/yin/kundalini, Sana sound baths,
+    workshops. Queer-welcoming community wellness venue.
+    """
+    source_name = "open_eye_yoga"
+    BASE_URL = "https://www.openeyeyoga.com"
+    URLS_TO_TRY = [
+        "https://www.openeyeyoga.com/events",
+        "https://www.openeyeyoga.com/workshops",
+        "https://www.openeyeyoga.com/calendar",
+    ]
+    DEFAULT_VENUE = "Open Eye Yoga, 4329 S Peoria Ave Suite 350, Lexington"
+    PRIORITY = 2
+
+
+class YogaQuestScraper(_FlexibleVenueScraper):
+    """yogaQuest — Lexington wellness studio. Workshops and special events."""
+    source_name = "yogaquest_lexington"
+    BASE_URL = "https://www.lexingtonyogaquest.com"
+    URLS_TO_TRY = [
+        "https://www.lexingtonyogaquest.com/events",
+        "https://www.lexingtonyogaquest.com/workshops",
+        "https://www.lexingtonyogaquest.com/calendar",
+    ]
+    DEFAULT_VENUE = "yogaQuest, Lexington"
+    PRIORITY = 2
+
+
+class SonicRayScraper(_FlexibleVenueScraper):
+    """Nicholas Ray Bradford (@thesonicray) — sound bath meditation events
+    around Lexington. Mobile artist; venue varies by event.
+    """
+    source_name = "the_sonic_ray"
+    BASE_URL = "https://thesonicray.com"
+    URLS_TO_TRY = [
+        "https://thesonicray.com/events",
+        "https://thesonicray.com/schedule",
+        "https://thesonicray.com/calendar",
+        "https://thesonicray.com/",
+    ]
+    DEFAULT_VENUE = "Various locations, Lexington (The Sonic Ray)"
+    PRIORITY = 2
+
+
+class UpdogYogaScraper(_FlexibleVenueScraper):
+    """Updog Yoga Lexington (415 E 12th St) — indoor/outdoor yoga, infrared heat,
+    hosts Sana Meditation sound baths and other special events.
+    """
+    source_name = "updog_yoga_lexington"
+    BASE_URL = "https://www.updogyogalexington.com"
+    URLS_TO_TRY = [
+        "https://www.updogyogalexington.com/events",
+        "https://www.updogyogalexington.com/workshops",
+        "https://www.updogyogalexington.com/calendar",
+        "https://www.updogyogalexington.com/class-schedule",
+    ]
+    DEFAULT_VENUE = "Updog Yoga, 415 E 12th St, Lexington"
+    PRIORITY = 2
+
+
+class SanaMeditationScraper(_FlexibleVenueScraper):
+    """Sana Meditation — Lexington wellness collective (Sue Webb & Tiffany Tran)
+    running immersive sound baths at Fly Loft, Lexington Botanic Garden, Updog,
+    and other community venues.
+    """
+    source_name = "sana_meditation"
+    BASE_URL = "https://sanameditation.com"
+    URLS_TO_TRY = [
+        "https://sanameditation.com/events",
+        "https://sanameditation.com/schedule",
+        "https://sanameditation.com/calendar",
+        "https://sanameditation.com/",
+    ]
+    DEFAULT_VENUE = "Various locations, Lexington (Sana Meditation)"
+    PRIORITY = 2
+
+
+class LexingtonYogaMeditationCenterScraper(_FlexibleVenueScraper):
+    """Lexington Yoga Meditation Center (5319 S Sheridan Rd) — yoga, Buddhist
+    meditation, Vedic education, Ayurveda, Reiki. Hosts workshops and
+    therapeutic classes.
+    """
+    source_name = "lexington_yoga_meditation_center"
+    BASE_URL = "https://www.lexingtonyogameditationcenter.com"
+    URLS_TO_TRY = [
+        "https://www.lexingtonyogameditationcenter.com/events",
+        "https://www.lexingtonyogameditationcenter.com/workshops",
+        "https://www.lexingtonyogameditationcenter.com/calendar",
+        "https://www.lexingtonyogameditationcenter.com/classes",
+    ]
+    DEFAULT_VENUE = "Lexington Yoga Meditation Center, 5319 S Sheridan Rd"
+    PRIORITY = 2
+
+
+class LexingtonPeoplesOrchestraScraper(PlaywrightBaseScraper):
+    """Lexington People's Orchestra -- Instagram profile scraper.
+
+    Public Instagram at @lexingtonpeoplesorchestra. Extracts post captions that
+    look like event announcements (brunches, concerts, performances at The Vault
+    and other Lexington venues). Falls back gracefully if Instagram blocks the request.
+    """
+
+    source_name = "lexington_peoples_orchestra"
+    PROFILE_URL = "https://www.instagram.com/lexingtonpeoplesorchestra/"
+    DEFAULT_VENUE = "The Vault, Lexington"
+    PRIORITY = 2
+
+    EVENT_KEYWORDS = [
+        "brunch", "concert", "performance", "show", "event",
+        "join us", "come out", "tickets", "doors open", "live music",
+        "tonight", "this week", "upcoming", "the vault",
+    ]
+
+    def scrape(self) -> List[Dict]:
+        import re
+        from bs4 import BeautifulSoup
+
+        html = self.fetch_page_js(
+            self.PROFILE_URL,
+            wait_for_selector="article, main, [role='main']",
+            timeout=20000,
+        )
+        if not html:
+            logger.warning(f"[{self.source_name}] No HTML from Instagram -- may require login")
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Try JSON-LD first
+        events = self._extract_json_ld_from_soup(soup, self.DEFAULT_VENUE, self.PRIORITY)
+        if events:
+            logger.info(f"[{self.source_name}] JSON-LD: {len(events)} events")
+            return events
+
+        # Extract post captions from Instagram's embedded JSON in <script> tags
+        captions = []
+        for script in soup.find_all("script"):
+            text = script.string or ""
+            if not text:
+                continue
+            found = re.findall(r'"edge_media_to_caption":\{"edges":\[.*?"text":"([^"]{10,})"', text)
+            captions.extend(found)
+            found2 = re.findall(r'"caption":"([^"]{10,500})"', text)
+            captions.extend(found2)
+
+        events = []
+        for caption in captions[:20]:
+            caption_clean = caption.replace("\\n", "\n").replace("\\u0026", "&")
+            caption_lower = caption_clean.lower()
+
+            if not any(kw in caption_lower for kw in self.EVENT_KEYWORDS):
+                continue
+
+            date_str = BaseScraper.parse_date_flexible(caption_clean)
+            time_match = re.search(r'\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b', caption_lower)
+            time_str = time_match.group(1).upper() if time_match else ""
+
+            venue = "The Vault, Lexington" if "the vault" in caption_lower else self.DEFAULT_VENUE
+            first_line = caption_clean.split("\n")[0].strip()[:80] or "Lexington People's Orchestra Event"
+
+            events.append(self.make_event(
+                name=first_line,
+                date=date_str,
+                time=time_str,
+                venue=venue,
+                description=caption_clean[:400],
+                url=self.PROFILE_URL,
+                priority=self.PRIORITY,
+            ))
+
+        logger.info(f"[{self.source_name}] Found {len(events)} event posts from Instagram")
+        return events
+
+
+class GoogleEventsScraper(PlaywrightBaseScraper):
+    """Google Events aggregator (headless, no login) — the bulk-up source.
+
+    Google's events panel (ibp=htl;events) aggregates venue + community events
+    that individual venue calendars don't expose to scrapers (BOK, Cain's, TPAC,
+    Gathering Place, Guthrie Green, markets, comedy, etc.). One query per day of
+    the current Mon-Sun week pulls dozens of real Lexington events. Loosened
+    relevance keeps the Lexington-area ones; the featured selection still floats the
+    fun/queer picks; the website lists them all.
+    """
+    source_name = "google_events"
+    PRIORITY = 2
+    # English + Spanish: the machine can sit in a Spanish-locale region (PV move
+    # 2026-06), and Google then serves the es-MX UI. hl/gl params below force
+    # English, but the Spanish terms stay as defense in depth (W28 shipped
+    # "Obtener entradas" / "mié" as venues on 41 events).
+    _JUNK_HEADINGS = {"all events", "events filters list", "details", "more events",
+                      "saved", "feedback", "learn more", "map",
+                      "todos los eventos", "detalles", "más eventos", "guardado",
+                      "comentarios", "más información", "mapa"}
+
+    def scrape(self) -> List[Dict]:
+        from bs4 import BeautifulSoup
+        from datetime import datetime, timedelta
+        import re as _re
+        today = datetime.now().date()
+        monday = today - timedelta(days=today.weekday())
+        week = [monday + timedelta(days=i) for i in range(7)]
+        events, seen = [], set()
+        time_rx = _re.compile(
+            r'(\d{1,2}(?::\d{2})?\s*(?:[–\-]\s*\d{1,2}(?::\d{2})?)?\s*[AP]M)', _re.I)
+        for d in week:
+            q = f"events in lexington {d.strftime('%B')} {d.day} {d.year}"
+            # hl/gl pin the UI to English/US regardless of the machine's location
+            # (Puerto Vallarta IPs get es-MX otherwise and the button labels
+            # "Obtener entradas"/"Detalles" leak into the venue field).
+            url = (f"https://www.google.com/search?q={q.replace(' ','+')}"
+                   f"&ibp=htl;events&hl=en&gl=US&pws=0")
+            html = self.fetch_page_js(url, wait_for_selector=None, timeout=30000)
+            if not html:
+                continue
+            soup = BeautifulSoup(html, "html.parser")
+            dstr = d.strftime("%Y-%m-%d")
+            for h in soup.select("div[role='heading']"):
+                nm = h.get_text(" ", strip=True)
+                if not nm or len(nm) < 6 or nm.lower() in self._JUNK_HEADINGS:
+                    continue
+                key = (nm.lower()[:40], dstr)
+                if key in seen:
+                    continue
+                # climb to the card container for time/venue
+                card = h
+                for _ in range(4):
+                    if card.parent:
+                        card = card.parent
+                ctext = card.get_text(" \n ", strip=True)
+                tm = ""
+                tmatch = time_rx.search(ctext)
+                if tmatch:
+                    tm = tmatch.group(1).replace("–", "-").upper().replace(" ", " ")
+                # Weekday off-by-one guard: Google's panel for one day can carry
+                # cards from adjacent days; every heading used to get stamped with
+                # the QUERY date, shifting events onto the wrong weekday. If the
+                # card itself names a date and it isn't the query day, skip it -
+                # the correct day's query picks it up (dedup key is name+date).
+                _date_rx = _re.compile(
+                    r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\b', _re.I)
+                dm = _date_rx.search(ctext)
+                if dm:
+                    _mon = ("jan feb mar apr may jun jul aug sep oct nov dec"
+                            .split().index(dm.group(1).lower()[:3]) + 1)
+                    if (_mon, int(dm.group(2))) != (d.month, d.day):
+                        continue
+                # venue: a line that isn't the name/date/city/time.
+                # Junk lists carry English + Spanish (es-MX UI leak, W28).
+                venue = ""
+                _btn = ("get tickets", "details", "directions", "save event", "save",
+                        "more sources", "more", "official site", "tickets", "share",
+                        "see web results", "interested", "going", "from $",
+                        "obtener entradas", "entradas", "detalles", "cómo llegar",
+                        "como llegar", "guardar", "compartir", "sitio oficial",
+                        "más opciones", "me interesa", "asistiré", "desde $")
+                # Spanish weekday tokens need a boundary right after (bare 'mar'
+                # would block "Marshall Brewing"); English keeps legacy prefix match.
+                _wday_rx = _re.compile(
+                    r'^(mon|tue|wed|thu|fri|sat|sun|tomorrow|today|\d'
+                    r'|(?:lun|mar|mi[eé]|jue|vie|s[aá]b|dom|hoy|ma[ñn]ana)(?:[\s,.:]|$))', _re.I)
+                for line in [x.strip() for x in ctext.split("\n") if x.strip()]:
+                    low = line.lower()
+                    if (line != nm and "lexington, ok" not in low and not time_rx.fullmatch(line)
+                            and not any(b == low or b in low for b in _btn)
+                            and not _wday_rx.match(low)
+                            and 4 < len(line) < 60 and any(c.isalpha() for c in line)):
+                        venue = line
+                        break
+                seen.add(key)
+                events.append(self.make_event(
+                    name=nm, date=dstr, time=tm, venue=venue or "Lexington, KY",
+                    description="", url=url, priority=self.PRIORITY,
+                ))
+        logger.info(f"[{self.source_name}] {len(events)} events across the week")
+        return events
+
+
+class VanguardScraper(PlaywrightBaseScraper):
+    """The Vanguard — Lexington live-music venue (Webflow site, .ec-col-item cards).
+    A queer-friendly venue with shows most nights, so it fills weekday slates.
+    """
+    source_name = "the_vanguard_lexington"
+    BASE_URL = "https://www.thevanguardlexington.com"
+    EVENTS_URL = "https://www.thevanguardlexington.com/shows"
+    DEFAULT_VENUE = "The Vanguard, 222 N Main St, Lexington, KY"
+
+    _MONTHS = ("January|February|March|April|May|June|July|August|September|"
+               "October|November|December")
+
+    def scrape(self) -> List[Dict]:
+        from bs4 import BeautifulSoup
+        import re as _re
+        html = self.fetch_page_js(self.EVENTS_URL, wait_for_selector=".ec-col-item", timeout=25000)
+        if not html:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        date_rx = _re.compile(rf'({self._MONTHS})\s+(\d{{1,2}}),\s*(\d{{4}})')
+        events, seen = [], set()
+        for card in soup.select(".ec-col-item"):
+            text = card.get_text(" ", strip=True)
+            m = date_rx.search(text)
+            if not m:
+                continue
+            name = _re.sub(r'^[^A-Za-z0-9]+', '', text[:m.start()].strip())
+            if not name or len(name) < 2:
+                continue
+            try:
+                date = datetime.strptime(
+                    f"{m.group(1)} {m.group(2)} {m.group(3)}", "%B %d %Y"
+                ).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+            link = card.find("a", href=True)
+            href = link["href"] if link else ""
+            url = (self.BASE_URL + href) if href.startswith("/") else (href or self.EVENTS_URL)
+            key = (name.lower(), date)
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append(self.make_event(
+                name=name, date=date, time="", venue=self.DEFAULT_VENUE,
+                description="", url=url, priority=2,
+            ))
+        return events
+
+
 # ── Module-level entry point ───────────────────────────────────────────────────
 
 _PLAYWRIGHT_SCRAPERS = [
+    GoogleEventsScraper,
+    VanguardScraper,
     FreedomOklahomaScraper,
+    LexingtonArtistFellowshipScraper,
     TwistedArtsScraper,
     BlackQueerLexingtonScraper,
     AllSoulsScraper,
@@ -1140,6 +2036,16 @@ _PLAYWRIGHT_SCRAPERS = [
     OKEQPlaywrightScraper,
     CircleCinemaScraper,
     PhilbrookMuseumScraper,
+    WOMPAScraper,
+    ShambhalaLexingtonScraper,
+    BeLoveYogaScraper,
+    OpenEyeYogaScraper,
+    YogaQuestScraper,
+    SonicRayScraper,
+    UpdogYogaScraper,
+    SanaMeditationScraper,
+    LexingtonYogaMeditationCenterScraper,
+    LexingtonPeoplesOrchestraScraper,
 ]
 
 

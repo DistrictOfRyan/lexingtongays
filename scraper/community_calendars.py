@@ -4,7 +4,7 @@ Sources:
 - Visit Lexington: https://www.visitlexington.com/events/
 - Downtown Lexington: https://downtownlexington.com/experience/calendar
 - Lexington Arts District: https://thelexingtonartsdistrict.org/events/list/
-- Public Radio Lexington: https://www.publicradiolexington.org/community-calendar
+- Public Radio Lexington: RETIRED 2026-07-07 (calendar removed from the site; all paths 404)
 - LexingtonPeople: https://www.lexingtonpeople.com/local-events/
 - ValueNews: https://valuenews.com/calendar-of-events
 - AllEvents.in Lexington: https://allevents.in/lexington
@@ -24,20 +24,40 @@ from typing import List, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scraper.base import BaseScraper
+from scraper.relevance import compile_lgbtq_keywords
 
 logger = logging.getLogger(__name__)
 
 LGBTQ_KEYWORDS = [
+    # Explicit identity
     "lgbtq", "queer", "gay", "lesbian", "bi", "trans", "drag", "pride",
     "rainbow", "dyke", "nonbinary", "non-binary", "gender", "equality",
-    "affirming", "inclusive", "homo", "sapphic",
+    "affirming", "inclusive", "homo", "sapphic", "two-spirit", "twospirit",
+    # Queer-adjacent / community-coded
+    "oddities", "curiosities",
+    "burlesque", "cabaret",
+    "feminist", "radical",
+    "night market", "art market", "bazaar", "market",
+    "wiz",
+    "greenwood", "black wall street",
+    "boots riley",
+    # Cultural event types
+    "screening", "film festival", "documentary",
+    "exhibition", "opening reception", "art opening",
+    "workshop", "panel discussion", "panel", "lecture",
+    "fundraiser", "benefit show", "benefit concert",
+    "cultural festival", "heritage",
+    "open mic", "poetry",
 ]
 
 
+_LGBTQ_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS)
+
+
 def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
-    """Return True if the event appears LGBTQ-relevant."""
+    """Return True if the event appears LGBTQ-relevant (word-boundary match)."""
     combined = (name + " " + description).lower()
-    return any(kw in combined for kw in LGBTQ_KEYWORDS)
+    return bool(_LGBTQ_RX.search(combined))
 
 
 class CommunityCalendarScraper(BaseScraper):
@@ -175,29 +195,12 @@ class CommunityCalendarScraper(BaseScraper):
     # ── Public Radio Lexington ─────────────────────────────────────────────────
 
     def _scrape_public_radio_lexington(self) -> List[Dict]:
-        url = "https://www.publicradiolexington.org/community-calendar"
-        soup = self.fetch_page(url)
-        if not soup:
-            logger.info("[community_calendars] Public Radio Lexington: no response")
-            return []
-
-        events = self._extract_json_ld(soup, "Public Radio Lexington", priority=2)
-        if events:
-            self._random_delay()
-            return events
-
-        containers = (
-            soup.select(".event")
-            or soup.select(".calendar-event")
-            or soup.select("[class*='event']")
-        )
-        for container in containers[:30]:
-            event = self._parse_generic_container(container, "Public Radio Lexington", url, 2)
-            if event:
-                events.append(event)
-
-        self._random_delay()
-        return events
+        # RETIRED 2026-07-07: publicradiolexington.org removed its community
+        # calendar. Every path variant (/community-calendar, /events,
+        # /calendar, /community-calendar-events) returns 404, and the footer
+        # "Community Events" nav item is now a dead label with no link. No-op
+        # instead of hitting a 404 (and logging a scary ERROR) every scrape.
+        return []
 
     # ── LexingtonPeople ────────────────────────────────────────────────────────
 
@@ -268,41 +271,11 @@ class CommunityCalendarScraper(BaseScraper):
     # ── AllEvents.in ───────────────────────────────────────────────────────
 
     def _scrape_allevents(self) -> List[Dict]:
-        # AllEvents.in uses a React frontend — try the search API first, then fall back to HTML
-        api_url = "https://allevents.in/api/index.php"
-        params = {
-            "city": "Lexington",
-            "state": "Oklahoma",
-            "country": "US",
-            "format": "json",
-            "page": 1,
-            "limit": 50,
-        }
-        data = self.fetch_json(api_url, params=params)
-        if data and isinstance(data, dict):
-            items = data.get("data", data.get("events", data.get("results", [])))
-            if isinstance(items, list) and items:
-                events = []
-                for item in items[:40]:
-                    name = item.get("event_name") or item.get("name") or item.get("title", "")
-                    if not name:
-                        continue
-                    start = item.get("start_time") or item.get("start") or item.get("date", "")
-                    date_str = str(start)[:10] if start else ""
-                    time_str = str(start)[11:16] if start and "T" in str(start) else ""
-                    venue_info = item.get("venue") or item.get("location") or {}
-                    venue = venue_info.get("name", "Lexington") if isinstance(venue_info, dict) else str(venue_info)[:80]
-                    description = (item.get("description") or item.get("event_description") or "")[:500]
-                    event_url = item.get("event_url") or item.get("url") or "https://allevents.in/lexington"
-                    events.append(self.make_event(
-                        name=name, date=date_str, time=time_str,
-                        venue=venue, description=description, url=event_url, priority=2
-                    ))
-                if events:
-                    self._random_delay()
-                    return events
-
-        # Fallback: scrape HTML listing page
+        # AllEvents.in serves schema.org/Event JSON-LD in its listing-page HTML.
+        # The old /api/index.php JSON endpoint is dead (returns an HTML error
+        # page -> a noisy "Expecting value" ERROR every scrape), so go straight
+        # to the HTML the JSON-LD extractor actually reads (verified 2026-07-07:
+        # allevents.in/lexington returns 200 with Event JSON-LD).
         url = "https://allevents.in/lexington"
         soup = self.fetch_page(url)
         if not soup:
@@ -367,8 +340,15 @@ class CommunityCalendarScraper(BaseScraper):
     # ── Gilcrease UnCrease ─────────────────────────────────────────────────
 
     def _scrape_gilcrease(self) -> List[Dict]:
-        """Scrape Gilcrease Museum's UnCrease series — free community arts program,
-        March-May 2026, local artists and performers, some LGBTQ-aligned events."""
+        """RETIRED 2026-07-06. The UnCrease series ended May 2026 (URL is 404)
+        and gilcrease.org/events is a React shell this static fetcher cannot
+        parse — this path produced 0 events for weeks. Gilcrease is now scraped
+        by rendered_sites (Playwright spec 'Gilcrease Museum' reading
+        time[datetime] blocks). Kept as a stub so the module structure and any
+        callers stay stable."""
+        return []
+
+    def _scrape_gilcrease_RETIRED(self) -> List[Dict]:
         url = "https://my.gilcrease.org/uncrease"
         soup = self.fetch_page(url)
         if not soup:

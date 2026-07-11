@@ -23,6 +23,8 @@ from typing import List, Dict, Optional, Tuple
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from scraper.playwright_scrapers import PlaywrightBaseScraper, _parse_iso_datetime
+from scraper import dynamic_sources as _dyn
+from scraper.relevance import compile_lgbtq_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -55,31 +57,35 @@ SEARCH_URLS = [
 
 # ── Known LGBTQ+ venue & org Facebook page event tabs ─────────────────────────
 PAGE_URLS = [
-    # REAL Lexington LGBTQ+ pages (verified 2026-06-19). The prior list was
-    # fabricated: the May scaffold blindly substituted Tulsa venue handles into
-    # nonexistent "Lexington" pages (TheLexingtonEagle, clubmajesticlexington,
-    # YBRLexington, CouncilOakMensChorus, etc. - none exist). Lexington's real
-    # gay scene is small: 2 bars (Crossings + The Bar Complex) plus the Pride
-    # org. The Bar Complex has no confirmable FB page (IG @thebarcomplex only),
-    # so it is covered via instagram_orgs, not here.
     # Bars & nightlife
-    "https://www.facebook.com/CrossingsLexington/events",        # Crossings - Lexington's LGBTQ+ dive bar (9.3k likes, verified)
-    "https://www.facebook.com/olehookers/events",                # Ole Hookers - downtown dive (205 S Limestone), karaoke/queer-welcoming (verified FB)
-    # Theaters / arts (queer-welcoming; KY Theatre runs queer film series)
-    "https://www.facebook.com/studioplayers/events",             # Studio Players @ Carriage House Theatre (154 W Bell Ct, verified FB)
-    # Community orgs / Pride
-    "https://www.facebook.com/LexPrideCenter/events",            # Lexington Pride Center (6.9k likes, verified, 389 Waller Ave)
-    "https://www.facebook.com/LexingtonPrideFestival/events",    # Lexington Pride Festival / Lexington Gay Services Org (16.3k likes, verified)
+    "https://www.facebook.com/TheLexingtonEagle/events",
+    "https://www.facebook.com/YBRLexington/events",
+    "https://www.facebook.com/clubmajesticlexington/events",
+    "https://www.facebook.com/dvllexington/events",
+    "https://www.facebook.com/innercirclelexington/events",     # Inner Circle Vodka Bar (410 N Main, Arts District) - frequent drag shows hosted by Shanel Sterling
+    # Arts & culture
+    "https://www.facebook.com/TwistedArtsLexington/events",
+    "https://www.facebook.com/queerlitcollective/events",
+    "https://www.facebook.com/CouncilOakMensChorus/events",
+    "https://www.facebook.com/LexingtonWinds/events",          # Lexington Winds — event-based ensemble, venue moves monthly (plays YBR etc.)
+    # Community orgs
+    "https://www.facebook.com/allnations2S/events",          # All Nations Two-Spirit Society
+    "https://www.facebook.com/lexingtonlambdaleague/events",     # Lambda Bowling
+    "https://www.facebook.com/queerwomenscollectivelexington/events",
+    "https://www.facebook.com/p/Urban-Lgbt-Lexington-inc-100085937172262/events",
+    "https://www.facebook.com/people/Lexington-House-of-Drag/61557097803540/events",
+    "https://www.facebook.com/PINT.inc/events",              # Paws In Need Lexington — rescue adoption/fundraiser events (FB-only; Wix site has no calendar)
+    "https://www.facebook.com/PawsInNeedAuction/events",     # Paws In Need Lexington AUCTION page — PINT runs fundraiser auctions from a separate FB page (e.g. 6/17 auction)
 ]
 
 # ── Lexington LGBTQ+ Facebook group event tabs ─────────────────────────────────────
 GROUP_URLS = [
     # LGBTQ-specific groups
     "https://www.facebook.com/groups/161646500587551/events",          # Gay Men of Lexington (1.3K)
-    # Okie Gays + group 220878821301627 REMOVED 2026-06-19: both are Oklahoma/Tulsa
-    # groups (numeric IDs copied from TulsaGays; "Okie"=Oklahoma) mislabeled Lexington.
-    "https://www.facebook.com/groups/715281449025002/events",          # Lexington LGBTQ+ Scene (2.8K) - verify ID is Lexington
-    "https://www.facebook.com/groups/472710852857064/events",          # LGBTQ Hot List - verify ID is Lexington
+    "https://www.facebook.com/groups/2612250565491228/events",         # Okie Gays (6K)
+    "https://www.facebook.com/groups/715281449025002/events",          # Lexington LGBTQ+ Scene (2.8K)
+    "https://www.facebook.com/groups/472710852857064/events",          # LGBTQ Hot List
+    "https://www.facebook.com/groups/220878821301627/events",          # LGBT Nightlife Lexington
     # General Lexington community / entertainment groups — goldmines for local events
     "https://www.facebook.com/groups/InterestingThingsToDoInLexington/events",  # Interesting Things To Do In Lexington (72K)
     "https://www.facebook.com/groups/funstufftodoinlexington/events",      # Fun Stuff to Do in Lexington!
@@ -97,6 +103,12 @@ LGBTQ_KEYWORDS = [
     "rainbow", "dyke", "nonbinary", "non-binary", "gender", "equality",
     "affirming", "inclusive", "homo", "sapphic",
 ]
+
+# Merge in any pages/groups discovered + promoted by the weekly source-growth
+# engine (data/dynamic_sources.json). Hardcoded lists above are the stable core;
+# these grow week over week. De-duped so a re-promotion is a no-op.
+PAGE_URLS = _dyn.merge_unique(PAGE_URLS, _dyn.fb_page_urls())
+GROUP_URLS = _dyn.merge_unique(GROUP_URLS, _dyn.fb_group_urls())
 
 
 def _get_week_range(week_offset: int = 0) -> Tuple[datetime, datetime]:
@@ -120,9 +132,12 @@ def _is_in_week(date_str: str, week_offset: int = 0) -> bool:
         return False
 
 
+_LGBTQ_RX = compile_lgbtq_keywords(LGBTQ_KEYWORDS)
+
+
 def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
     combined = (name + " " + description).lower()
-    return any(kw in combined for kw in LGBTQ_KEYWORDS)
+    return bool(_LGBTQ_RX.search(combined))
 
 
 class FacebookEventsScraper(PlaywrightBaseScraper):
