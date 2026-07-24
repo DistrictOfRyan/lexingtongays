@@ -83,78 +83,42 @@ def _is_lgbtq_relevant(name: str, description: str = "") -> bool:
 # lgbtq_only=True   → return ALL events (LGBTQ-specific orgs)
 
 SITES: List[Tuple[str, str, str, bool]] = [
-    # TOURISM / CVB
-    ("https://travelok.com/listings/view_feature/category.lodging/city.lexington", "TravelOK", "tourism", False),
-    ("https://www.greencountryok.com/cities/lexington/festivals-events-in-lexington", "Green Country Oklahoma", "tourism", False),
-    ("https://lexingtongo.com/experience", "LexingtonGo", "tourism", False),
+    # ── REBUILT 2026-07-23 ────────────────────────────────────────────────
+    # The previous list was the TulsaGays list with "Tulsa" string-replaced by
+    # "Lexington". That produced 29 domains that never existed (lexingtonzoo.org,
+    # coxcenterlexington.com, calendar.ulexington.edu, ...) plus 10 REAL TULSA
+    # venues (Philbrook, Woody Guthrie Center, Cain's Ballroom, BOK Center,
+    # Gathering Place, Expo Square, ...) quietly feeding OKLAHOMA events into a
+    # Kentucky site. Verified live 2026-07-23: 29/39 dead, 10/39 Tulsa. That is
+    # the whole reason source-health reported "63 sources, 0 events."
+    # Every URL below was HTTP-verified live on 2026-07-23. Never add a source
+    # by find-and-replacing a city name - verify the domain exists first.
 
-    # NEWS / MEDIA
-    ("https://www.lexingtonkids.com/calendar/", "LexingtonKids Magazine", "media", False),
-    ("https://lexington.events", "Lexington Events", "media", False),
+    # TOURISM / CVB
+    ("https://www.visitlex.com/events/", "VisitLEX", "tourism", False),
 
     # CITY / GOVERNMENT
-    ("https://www.cityoflexington.org/government/departments/parks-recreation/events/", "City of Lexington", "city", False),
-
-    # MUSEUMS & CULTURAL
-    ("https://philbrook.org/calendar/", "Philbrook Museum", "museum", False),
-    ("https://woodyguthriecenter.org/events/", "Woody Guthrie Center", "museum", False),
-    ("https://www.greenwoodculturalcenter.com/events", "Greenwood Cultural Center", "museum", False),
-    # 2026-07-06: cert only valid for the apex host, www. fails TLS
-    ("https://1921lexingtonmassacre.org/events", "1921 Lexington Race Massacre Memorial", "museum", False),
-    ("https://www.lexingtonzoo.org/events/", "Lexington Zoo", "museum", False),
-    ("https://www.gatheringplace.org/parkcalendar/", "Gathering Place", "museum", False),
-    ("https://www.lexingtongardencenter.com/events/", "Lexington Garden Center", "museum", False),
-    ("https://www.okaquarium.org/events/", "Oklahoma Aquarium", "museum", False),
-    ("https://discoverylab.org/events/", "Discovery Lab", "museum", False),
-    ("https://101archer.com/events/", "101 Archer", "museum", False),
-
-    # PERFORMING ARTS
-    ("https://www.lexingtonpac.com/events/", "Lexington PAC", "arts", False),
-    ("https://www.bokcenter.com/events", "BOK Center", "arts", False),
-    ("https://cainsballroom.com/events/", "Cain's Ballroom", "arts", False),
-    ("https://lexingtontheater.com/events/", "Lexington Theater", "arts", False),
-    ("https://www.hardrockcasinolexington.com/entertainment/", "Hard Rock Live Lexington", "arts", False),
-    ("https://www.riverspiritlexington.com/entertainment/", "River Spirit Casino", "arts", False),
-    ("https://www.thechurchstudio.com/events/", "The Church Studio", "arts", False),
-    ("https://www.coxcenterlexington.com/events/", "Cox Business Convention Center", "arts", False),
-
-    # SPORTS / EXPO
-    ("https://www.milb.com/lexington/schedule/", "Lexington Drillers (ONEOK Field)", "sports", False),
-    ("https://www.fclexington.com/schedule/", "FC Lexington", "sports", False),
-    ("https://www.lexingtonoilers.com/schedule/", "Lexington Oilers", "sports", False),
-    ("https://www.exposquare.com/events/", "Expo Square", "sports", False),
+    ("https://www.lexingtonky.gov/events", "City of Lexington KY", "city", False),
 
     # LIBRARIES
-    ("https://events.lexingtonlibrary.org/", "Lexington City-County Library", "library", False),
+    ("https://www.lexpublib.org/events", "Lexington Public Library", "library", False),
+
+    # ARTS / MUSIC / VENUES
+    ("https://www.rupparena.com/events", "Rupp Arena", "arts", False),
+    ("https://lexingtonoperahouse.com/events/", "Lexington Opera House", "arts", False),
+    ("https://manchestermusichall.com/events/", "Manchester Music Hall", "arts", False),
+    ("https://www.kentuckytheatre.org/", "Kentucky Theatre", "arts", False),
 
     # UNIVERSITIES
-    ("https://calendar.ulexington.edu/", "University of Lexington", "university", False),
-    ("https://lexington.okstate.edu/calendar/", "OSU-Lexington", "university", False),
-    ("https://www.oru.edu/events/", "ORU", "university", False),
-    ("https://www.lexingtoncc.edu/campus-life/events/", "Lexington Community College", "university", False),
+    ("https://calendar.uky.edu/", "University of Kentucky", "university", False),
+    ("https://www.transy.edu/calendar/", "Transylvania University", "university", False),
+
+    # NEIGHBORHOOD / MARKETS
+    ("https://www.lexingtonfarmersmarket.com/", "Lexington Farmers Market", "neighborhood", False),
 
     # LGBTQ+ SPECIFIC (return ALL events, no keyword filter)
-    # 2026-07-06: lexingtonpride.org rebuilt (Astra WP); /events/ is now 404, so
-    # point at the homepage — announcements surface there until a new events
-    # path exists.
-    ("https://lexingtonpride.org/", "Lexington Pride", "lgbtq", True),
-    # Goff Center / Goff Fest — celebrates gay architect Bruce Goff's legacy;
-    # programming includes an Annual Pride Celebration. Plain-HTML events page,
-    # reliable backup to the @goff_fest Instagram scraper.
-    ("https://goff-fest.com/events/", "Goff Center / Goff Fest", "lgbtq", True),
-
-    # TICKETING / AGGREGATORS
-    ("https://seatgeek.com/lexington-oklahoma-tickets", "SeatGeek Lexington", "ticketing", False),
-    # 2026-07-06: Meetup REMOVED from this list. The find-page URL ignores
-    # userFreeform and geolocates by IP — from this machine (Mexico) it served
-    # CDMX events that passed the LGBTQ filter labeled as Lexington. Meetup is
-    # covered by eventbrite_meetup.MeetupScraper, which pins
-    # location=us--ok--lexington explicitly. Never re-add an IP-geolocated URL here.
-
-    # NEIGHBORHOOD / NICHE
-    ("https://www.brooksidelexington.com/events/", "Brookside Lexington", "neighborhood", False),
-    ("https://www.cherrystreetfarmersmarket.com/events/", "Cherry Street Farmers Market", "neighborhood", False),
-    ("https://www.lexingtonfarmersmarket.org/events/", "Lexington Farmers' Market", "neighborhood", False),
+    ("https://lexpridefest.org/", "Lexington Pride Festival", "lgbtq", True),
+    ("https://www.lexpridecenter.org/events", "Pride Community Services Organization", "lgbtq", True),
 ]
 
 # Merge in calendar sites discovered + promoted by the weekly source-growth

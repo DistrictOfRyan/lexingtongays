@@ -172,6 +172,7 @@ SOURCES = {
         "description": "Queer-owned, woman-owned artisanal coffee shop and bar. Voted Best of Lex 2024. Opened June 2017. Coffee/tea cocktails from noon, 21+ during bar service.",
     },
     "third_street_stuff": {
+        "url": "https://www.thirdstreetstuff.com/",  # verified live HTTP 200 2026-07-23
         "name": "Third Street Stuff and Coffee",
         "priority": 3,
         "type": "community",
@@ -355,6 +356,7 @@ SOURCES = {
         "description": "Presbyterian church in Bluegrass Rainbow Faith Communities Directory.",
     },
     "first_pres_lex": {
+        "url": "https://www.fpclex.org/",  # verified live HTTP 200 2026-07-23
         "name": "First Presbyterian Church Lexington",
         "priority": 3,
         "type": "church",
@@ -367,6 +369,7 @@ SOURCES = {
         "description": "Methodist congregation. God's Pantry location, Spanish-language services available.",
     },
     "bethesda_tabernacle": {
+        "url": "https://bethesdatabernacle.org/",  # verified live HTTP 200 2026-07-23
         "name": "Bethesda Tabernacle",
         "priority": 3,
         "type": "church",
