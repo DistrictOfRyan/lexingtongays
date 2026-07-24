@@ -3,8 +3,10 @@ Source health pre-flight check for the Lexington Gays event scraper.
 
 Reads all SOURCES from config.py, tests each URL, then cross-references
 the most recent data/events/*_all.json to show which sources contributed
-0 events last week. Writes a summary to pending-william-actions.md and
-prints the full report to stdout.
+0 events last week. Routes the summary to the DASHBOARD via
+task-runner/pending_actions.fyi() (2026-07-23: it used to append into
+pending-william-actions.md every run, which ballooned the Action Inbox with
+FYI William never acts on) and prints the full report to stdout.
 
 Level 2 (The Differ): persists each run to data/source_health_history/
 and leads the report with a diff (newly broken / still broken / recovered).
@@ -99,6 +101,26 @@ def _verdict_for(entry: dict, week_file: str) -> str:
     if week_file == "none found":
         return "OK"  # no cross-reference available; cannot judge yield
     return "HEALTHY" if entry.get("event_count", 0) > 0 else "NO_YIELD"
+
+
+def _week_file_total_events(week_file: str) -> int:
+    """Raw event count in the given *_all.json, independent of source-key matching.
+
+    Gap G212: per-source yield is matched against config.py keys, which never
+    overlap the aggregator keys the scraper actually writes. This reads the true
+    total so a healthy week is never mistaken for a systemic parse failure.
+    Returns 0 on any read problem (fail toward the existing guard, not past it).
+    """
+    try:
+        path = os.path.join(EVENTS_DIR, week_file)
+        if not os.path.exists(path):
+            return 0
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        events = data.get("events", []) if isinstance(data, dict) else data
+        return len(events) if isinstance(events, list) else 0
+    except Exception:
+        return 0
 
 
 def detect_total_zero(results: list, event_counts: dict, week_file: str) -> dict | None:
