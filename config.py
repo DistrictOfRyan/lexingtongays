@@ -156,15 +156,20 @@ SOURCES = {
     },
     "bar_ona": {
         "name": "Bar Ona",
+        "address": "108 Church St, Lexington, KY",
+        "instagram": "https://www.instagram.com/ona_is_a_bar/",
+        "facebook": "https://www.facebook.com/ONA108/",
         "priority": 3,
         "type": "bar",
-        "description": "Esquire-rated downtown Lexington cocktail bar. Queer-friendly crowd.",
+        "description": "Esquire-rated downtown Lexington cocktail bar. Queer-friendly crowd. Open 7 days 5p-1a; specials posted to Instagram.",
     },
     "lussi_brown": {
         "name": "Lussi Brown Coffee Bar",
+        "address": "114 Church St, Lexington, KY",
+        "facebook": "https://www.facebook.com/LussiBrownCoffeeBar/",
         "priority": 2,
         "type": "community",
-        "description": "Queer-owned, woman-owned artisanal coffee shop and bar. Voted Best of Lex 2024. Opened June 2017.",
+        "description": "Queer-owned, woman-owned artisanal coffee shop and bar. Voted Best of Lex 2024. Opened June 2017. Coffee/tea cocktails from noon, 21+ during bar service.",
     },
     "third_street_stuff": {
         "name": "Third Street Stuff and Coffee",
@@ -266,9 +271,10 @@ SOURCES = {
     },
     "last_wednesgays": {
         "name": "Lexington's Last WednesGays",
+        "url": "https://www.faulknermorgan.org/upcoming-events/last-wednesgays",
         "priority": 1,
         "type": "community",
-        "description": "Recurring queer community social, last Wednesday of the month. Strong signature event candidate.",
+        "description": "Recurring queer community social, last Wednesday of the month. Started by Andrew Shayde, brought to Lexington 2019, restarted March 2025. ~125 attendees; rotates among LGBTQ-friendly bars; 10% of sales to AVOL Kentucky. Strong signature event candidate.",
         "recurring": "Last Wednesday monthly",
     },
     "lex_queer_craft_club": {
@@ -435,9 +441,11 @@ SOURCES = {
     # Tier 5 — Annual events
     "north_american_bear_weekend": {
         "name": "North American Bear Weekend",
+        "url": "https://nabweekend.com/schedule/",
+        "website": "https://nabweekend.com/",
         "priority": 1,
         "type": "priority",
-        "description": "Annual major LGBTQ+ event in Lexington. Draws thousands of bears. Verify exact dates each year.",
+        "description": "Annual major LGBTQ+ event in Lexington at Marriott Griffin Gate Resort. 14th annual runs Feb 12-15 2026; ~1,800 attendees. Verify exact dates each year (site posts next-year dates by May 1).",
     },
     "pride_of_place_tour": {
         "name": "Pride of Place Tour",
