@@ -123,6 +123,16 @@ def detect_total_zero(results: list, event_counts: dict, week_file: str) -> dict
     current_week = _get_week_key()
     if current_week and not week_file.startswith(current_week):
         return None
+    # 2026-07-23 (gap G212): score TOTAL weekly yield, not per-source MATCHED yield.
+    # config.py keys sources by organisation (lex_pride_center, uk_lgbtq, ...) but the
+    # scraper tags events with aggregator/module keys (google_events, meetup,
+    # eventbrite, ...). set(event_keys) & set(config_keys) is EMPTY, so the matched
+    # per-source sum is structurally ALWAYS 0 - even in a healthy week. Proven on
+    # 2026-W30: 84 real Lexington events on disk, matched yield 0. Without this,
+    # the total-zero guard hard-fails (exit 2) every healthy week, which is worse
+    # than the false alarm it was built to catch.
+    if _week_file_total_events(week_file) > 0:
+        return None
     considered = [r for r in results if r.get("status") not in _SKIP_DIFF]
     if not considered:
         return None
