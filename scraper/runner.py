@@ -27,16 +27,18 @@ from scraper import (
     churches,
     bars,
     manual_input,
-    major_events,
-    lexington_arts_district,
     facebook_events,
     ticketing_sites,
     timetree_scraper,
     slack_browser_scraper,
-    studio66,
     instagram_orgs,
     rendered_sites,
 )
+# major_events / studio66 / (the former "lexington_arts_district") were Tulsa-only
+# modules (Tulsa Tough, @studio.66_, Tulsa Arts District) that a blind city sync
+# find-replaced into this file without the underlying Lexington-specific modules
+# ever being built — see gap G181. Dropped from the import + scraper list below
+# until real Lexington equivalents exist; do not fabricate Lexington venue data.
 from scraper.relevance import compile_keywords
 
 logger = logging.getLogger(__name__)
@@ -808,6 +810,32 @@ def save_results(events: List[Dict], week_key: str = None):
     if week_key is None:
         week_key = get_week_key()
 
+    # G204 GEO GUARD: drop events that belong to a DIFFERENT city before any
+    # file is written. 2026-W30 published 14 of 84 events at Tulsa venues
+    # (Philbrook, Circle Cinema, the Dennis R. Neill Equality Center, and
+    # qlist.app/events/Tulsa/...) relabelled as Lexington - real addresses that
+    # do not exist in this metro. The offending scrapers live in SHARED files
+    # that sync_from_tulsa.py overlays, so deleting them locally gets reverted;
+    # guarding at the single write choke point is sync-safe and protects
+    # _all/_weekday/_weekend in one place.
+    # Fail-OPEN by design: a guard bug must never take the whole site down.
+    try:
+        from tools.geo_guard import filter_events as _geo_filter, resolve_city as _resolve_city
+        _city = _resolve_city(config)
+        if not _city:
+            # No city configured. Do NOT guess - guessing the wrong city here
+            # would filter out the site's own legitimate events. Skip loudly.
+            raise RuntimeError(
+                "no CITY_NAME/CITY/SITE_CITY in config - refusing to guess a city")
+        _kept, _dropped = _geo_filter(events, _city)
+        if _dropped:
+            print(f"[geo_guard] dropped {len(_dropped)} event(s) not in {_city}:")
+            for _e in _dropped[:10]:
+                print(f"    - {str(_e.get('name'))[:50]} | {_e.get('_dropped_reason')}")
+            events = _kept
+    except Exception as _e:  # noqa: BLE001 - never block a publish on the guard
+        print(f"[geo_guard] SKIPPED (non-fatal): {_e}")
+
     split = split_weekday_weekend(events)
 
     combined_path = os.path.join(config.EVENTS_DIR, f"{week_key}_all.json")
@@ -854,7 +882,6 @@ def run_all_scrapers() -> List[Dict]:
     # Ordered by importance/reliability
     scrapers = [
         ("manual_input", manual_input.scrape),  # Always first — manually curated, priority honored (default 1)
-        ("major_events", major_events.scrape),  # Marquee Lexington civic events (Lexington Tough, Route 66 centennial, State Fair, Oktoberfest...) — website coverage, priority 3
         ("recurring", recurring.scrape),
         ("okeq_calendar", okeq_calendar.scrape),
         ("twisted_arts", twisted_arts.scrape),
@@ -868,11 +895,9 @@ def run_all_scrapers() -> List[Dict]:
         ("aa_meetings", aa_meetings.scrape),
         ("qlist", qlist.scrape),
         ("community_groups", community_groups.scrape),
-        ("studio_66", studio66.scrape),  # @studio.66_ IG via authenticated instagrapi session
         ("instagram_orgs", instagram_orgs.scrape),  # IG-only orgs: KLASSIC (@upflykai), Goff Center (@goff_fest)
         ("churches", churches.scrape),
         ("bars", bars.scrape),
-        ("lexington_arts_district", lexington_arts_district.scrape),
         ("facebook_events", facebook_events.scrape),
         ("ticketing_sites", ticketing_sites.scrape),
         ("timetree_scraper", timetree_scraper.scrape),  # Lexington Isn't Boring -- iCal/Playwright/browser-flag

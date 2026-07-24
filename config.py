@@ -2,6 +2,16 @@
 import os
 from datetime import datetime
 
+# ── City identity ────────────────────────────────────────────────────────
+# CITY-SPECIFIC. Read by tools/geo_guard.py (via resolve_city) to drop events
+# that belong to another metro before publish. Added 2026-07-23 for gap G204,
+# after 14 of 84 events in 2026-W30 were published at TULSA venues (Philbrook,
+# Circle Cinema, Dennis R. Neill Equality Center, qlist.app/events/Tulsa/...)
+# relabelled as Lexington. Without this the guard fails OPEN and does nothing,
+# so every city site needs its own value - never let it be inherited by sync.
+CITY_NAME = "Lexington"
+CITY_STATE = "KY"
+
 # Load .env if present
 _env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(_env_file):
@@ -62,10 +72,11 @@ SOURCES = {
     },
     "pflag_central_ky": {
         "name": "PFLAG Central Kentucky",
-        "url": "https://www.pflagcentralky.org/",
+        "url": "https://pflaglexington.org/",
+        "facebook": "https://www.facebook.com/pflag.lexington/",
         "priority": 1,
         "type": "community",
-        "description": "Local PFLAG chapter — support and advocacy for LGBTQIA+ community and families.",
+        "description": "Local PFLAG chapter — support and advocacy for LGBTQIA+ community and families. Rebranded as PFLAG Lexington/Fayette County; old pflagcentralky.org domain now returns 503.",
     },
     "fairness_campaign": {
         "name": "Fairness Campaign",
@@ -248,10 +259,10 @@ SOURCES = {
     },
     "ky_fried_sisters": {
         "name": "Kentucky Fried Sisters",
-        "url": "https://kyfriedsisters.org",
+        "url": "https://www.facebook.com/KYFriedSisters/",
         "priority": 2,
         "type": "community",
-        "description": "Lexington's order of genderqueer clown nuns. Community fundraising + visibility.",
+        "description": "Lexington's order of genderqueer clown nuns. Community fundraising + visibility. Original kyfriedsisters.org domain expired/parked-for-sale; Facebook is now the only active presence.",
     },
     "last_wednesgays": {
         "name": "Lexington's Last WednesGays",
