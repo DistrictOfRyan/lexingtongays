@@ -27,6 +27,14 @@ def _is_garbage(ev):
     return False
 events = [e for e in events if not _is_garbage(e)]
 
+# Relative-date leakage: Eventbrite / Google Events cards put "in 5 days",
+# "Tomorrow" etc. where the venue should be, and it shipped to the live site as
+# the venue on 85 event cards AND into the schema.org location name (2026-07-31).
+# Pattern, not exact-match, because the number varies day to day.
+_VENUE_JUNK_RE = re.compile(
+    r'^(in\s+(a|an|\d+)\s+(day|days|hour|hours|week|weeks|month|months)'
+    r'|today|tonight|tomorrow|yesterday|this\s+\w+|next\s+\w+)$', re.I)
+
 # Voice rule #1 at the DATA level: strip em/en dashes from every event field once,
 # up front, so no downstream path (cards via esc(), schema.org JSON-LD via
 # json.dumps, share pages, og/meta descriptions) can ship a dash to the website.
@@ -38,6 +46,20 @@ try:
                 _e[_f] = _sed_field(_e[_f])
 except Exception:
     pass
+
+# DATA-level scrub of scraper artifacts, using the ONE shared implementation
+# (content/textclean.py) so the website, the slides and the weekend carousel
+# cannot drift apart again. Done once, up front, so no downstream path (cards,
+# schema.org JSON-LD, share pages, og/meta tags) can emit an artifact.
+from content.textclean import clean_time as _tc_time, scrub_copy as _tc_copy,     is_junk_venue as _tc_junk_venue
+for _e in events:
+    if _e.get('time'):
+        _e['time'] = _tc_time(_e['time'])
+    if _e.get('venue') and _tc_junk_venue(_e['venue']):
+        _e['venue'] = ''
+    for _f in ('description', 'website_description'):
+        if _e.get(_f):
+            _e[_f] = _tc_copy(_e[_f])
 
 # Show ALL events on the website — gay score distinguishes LGBTQ events from general ones.
 # All city-specific data (venues, source keys, anchor keywords) reads from config.py.
@@ -343,7 +365,7 @@ for day in DAYS:
 #   - _SKIP_VENUES (majestic, etc.)
 #   - _SKIP_NAME_FRAGMENTS (bowling, support groups, etc.)
 #   - Tier priority: HH → Council Oak → Drag → Queer Perf → Trusted LGBTQ → LGBTQ keywords
-from eotw_selector import select_eotw
+from eotw_selector import select_eotw_list
 
 all_flat = [e for day in DAYS for e in events_by_day[day]]
 
@@ -375,8 +397,14 @@ try:
 except Exception as _ed:
     print(f"[warn] final card dedupe skipped: {_ed}")
 
-eotw = select_eotw(all_flat)
+# Use the LIST selector so the website honors manual pins + partner auto-
+# highlight exactly like the carousel (2026-07-20: the old single-pick path
+# ignored both and bannered a recurring Drag Brunch over the Fringe/PFLAG
+# partner heroes). Banner shows hero #1; every hero gets the featured star.
+_eotw_list = select_eotw_list(all_flat, week_key=config.current_week_key())
+eotw = _eotw_list[0] if _eotw_list else None
 eotw_key = (eotw.get('name', ''), eotw.get('date', '')) if eotw else None
+eotw_keys = {(e.get('name', ''), e.get('date', '')) for e in _eotw_list}
 
 def _day_sort_key(e):
     return (e.get('priority', 99), _parse_minutes(e.get('time') or ''))
@@ -469,6 +497,8 @@ def _clean_venue(raw: str) -> str:
     if any(low.startswith(j) for j in _VENUE_JUNK):
         return ''
     if low.rstrip('.!') in _VENUE_JUNK_EXACT:
+        return ''
+    if _VENUE_JUNK_RE.match(low.rstrip('.!')):
         return ''
     # Map known address fragments to business names
     for addr, name in _VENUE_NAME_MAP.items():
@@ -574,7 +604,7 @@ for day in DAYS_ORDERED:
         for ev in day_evs:
             ev_name = ev.get('name', '')
             ev_key = (ev_name, ev.get('date', ''))
-            is_featured = bool(eotw_key and ev_key == eotw_key)
+            is_featured = bool(eotw_keys and ev_key in eotw_keys)
             card_cls = 'event-card featured' if is_featured else 'event-card'
             name_color = 'var(--gold)' if is_featured else f'var({css_var})'
             time_color = 'var(--gold)' if is_featured else f'var({css_var})'

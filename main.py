@@ -169,6 +169,183 @@ def cmd_verify(week=None):
         _sys.exit(exit_code)
 
 
+# Hoisted to module level 2026-08-04 so the W32 venue-relocation regression
+# test can call it directly. It uses no state from cmd_generate; it was nested
+# only by history. The bug it now guards against (a field-by-field "best of"
+# merge that took the title from one record and the venue from another) shipped
+# a wrong address on a live carousel precisely because nothing tested this.
+def _dedup_day(ev_list):
+    def _norm(s):
+        return re.sub(r'\W+', ' ', (s or '').lower()).strip()
+
+    def _has_address(venue):
+        v = venue or ''
+        return ',' in v or any(c.isdigit() for c in v)
+
+    from difflib import SequenceMatcher as _SM
+
+    def _fuzzy_same(a, b):
+        """Two SAME-DATE names that point at one real event scraped twice.
+        Tuned (2026-06-29) to catch 'DRAGNIFICENT! at Club Majestic' vs
+        'DRAGNIFICENT! Drag Show' and 'First Friday Art Crawl (Downtown
+        Lexington)' vs '... in Lexington Arts District', WITHOUT merging distinct
+        events like 'DJ | Gus' vs 'DJ | Sir Juice' or two different markets."""
+        na, nb = _norm(a), _norm(b)
+        if not na or not nb:
+            return False
+        if na == nb:
+            return True
+        if (na in nb or nb in na) and min(len(na), len(nb)) >= 10:
+            return True
+        ta, tb = na.split(), nb.split()
+        if ta and tb and ta[0] == tb[0] and len(ta[0]) >= 8:  # shared distinctive lead token
+            return True
+        if _SM(None, na, nb).ratio() >= 0.80:
+            return True
+        sa, sb = set(ta), set(tb)
+        if sa and sb and len(sa & sb) / len(sa | sb) >= 0.55:
+            return True
+        return False
+
+    seen = {}   # key -> index in result
+    result = []
+    for ev in ev_list:
+        name_norm = _norm(ev.get('name', ''))
+        date = ev.get('date', '')
+        venue_norm = _norm(ev.get('venue', ''))
+        # Collapse all HHHH + co-hosted Pride Kickoff variants into one
+        # bucket. On the combined First-Friday Pride Kickoff date (6/5), the
+        # Lexington Artist Fellowship First Fridays / Flagpole Go-Go events are
+        # the SAME night and fold into the one combined event.
+        _taf_first_friday = (
+            date == '2026-06-05'
+            and ('first friday' in name_norm or 'flagpole' in name_norm
+                 or 'go go' in name_norm
+                 or 'lexington artist fellowship' in venue_norm
+                 or 'flagship' in venue_norm)
+        )
+        if ('homo hotel' in name_norm or 'hhhh' in name_norm
+                or 'pride kickoff' in name_norm or _taf_first_friday):
+            key = ('__hhhh__', date)
+        else:
+            key = (name_norm[:40], date)
+
+        idx = seen.get(key)
+        if idx is None:
+            # Fuzzy fallback: a near-identical name on the SAME date is the
+            # same real event scraped twice — OR same venue + date with
+            # overlapping name words (W28: 'Elote Drag Brunch' vs 'Drag
+            # Brunch : jul. 11th - stars, stripes & sequins', one brunch
+            # under two titles that took two featured slots).
+            try:
+                from scraper.runner import _same_event_by_venue as _sev
+            except Exception:
+                _sev = lambda _a, _b: False
+            for _j, _ex in enumerate(result):
+                if _ex.get('date', '') == date and (
+                        _fuzzy_same(ev.get('name', ''), _ex.get('name', ''))
+                        or _sev(ev, _ex)):
+                    idx = _j
+                    break
+        if idx is None:
+            seen[key] = len(result)
+            result.append(dict(ev))
+        else:
+            existing = result[idx]
+            # Prefer the more informative title (one that names a venue via
+            # " at ") -- but ONLY when that title's venue agrees with the record
+            # we're keeping. Adopting "... at Courtyard Downtown" onto a record
+            # whose venue line says "Dennis R. Neill Equality Center" is how W32
+            # shipped a slide that contradicted itself (2026-08-04).
+            _en = existing.get('name', '') or ''
+            _nn = ev.get('name', '') or ''
+            if ' at ' in _nn.lower() and ' at ' not in _en.lower():
+                try:
+                    from scraper.runner import _same_venue_place as _svp_n
+                except Exception:
+                    _svp_n = lambda _a, _b: True
+                _claimed = _nn.lower().split(' at ', 1)[1]
+                _cur_venue = existing.get('venue') or ev.get('venue') or ''
+                if not _cur_venue or _svp_n(_claimed, _cur_venue):
+                    existing['name'] = _nn
+            # Keep the canonical "Pride Kickoff" name for the combined event.
+            if 'pride kickoff' in name_norm and 'pride kickoff' not in _norm(existing.get('name', '')):
+                existing['name'] = ev.get('name', existing.get('name'))
+            new_venue = ev.get('venue') or ''
+            old_venue = existing.get('venue') or ''
+            # VENUE: enrich, NEVER relocate (fixed 2026-08-04).
+            #
+            # The old rule was "the venue string with a comma or a digit in it
+            # wins, and failing that the LONGER one wins" -- pure formatting
+            # heuristics, never a check that the two strings named the same
+            # building. Combined with the field-by-field merge above (title from
+            # whichever record says " at ", copy from whichever is longest), it
+            # built a slide out of three different records: W32's cover shipped
+            # "Homo Hotel Happy Hour at Courtyard Downtown" over "@ Dennis R.
+            # Neill Equality Center, 621 E 4th St" -- a different building a mile
+            # away, for William's own event.
+            #
+            # Now a venue is only adopted when it names the SAME place (adding
+            # street detail) or when there is no venue yet. A genuinely different
+            # place is refused and recorded, so preflight blocks instead of the
+            # carousel picking one at random.
+            try:
+                from scraper.runner import _same_venue_place as _svp
+            except Exception:
+                _svp = lambda _a, _b: False
+            try:
+                from scraper.runner import _venue_place_tokens as _vpt
+            except Exception:
+                _vpt = lambda _v: set()
+            if new_venue and not old_venue:
+                existing['venue'] = new_venue
+            elif new_venue and old_venue and not _vpt(old_venue) and _vpt(new_venue):
+                # The kept venue is all generic/geographic words ("Lexington, KY") --
+                # it identifies no building, so a distinctive venue from the
+                # duplicate is an upgrade, not a relocation.
+                existing['venue'] = new_venue
+            elif new_venue and old_venue and _svp(old_venue, new_venue):
+                if _has_address(new_venue) and not _has_address(old_venue):
+                    existing['venue'] = new_venue
+                elif _has_address(new_venue) and len(new_venue) > len(old_venue):
+                    existing['venue'] = new_venue
+            elif new_venue and old_venue:
+                # Two sources disagree on the building. Never let arrival order
+                # decide -- that is a coin flip on an address readers will drive to.
+                # If an operator has CONFIRMED this event's venue for this month
+                # (data/venue_overrides.json, sourced from the organizer's own
+                # listing), that value wins outright. Otherwise keep what we have and
+                # record the disagreement so preflight HARD-BLOCKS rather than
+                # shipping a guess.
+                _confirmed = None
+                try:
+                    from scraper.venue_overrides import override_venue_for
+                    _confirmed = override_venue_for(
+                        existing.get('name', '') or ev.get('name', ''), date)
+                except Exception:
+                    _confirmed = None
+                if _confirmed:
+                    if existing.get('venue') != _confirmed:
+                        print(f"  [dedup] venue conflict on '{existing.get('name','?')}' "
+                              f"({date}) resolved by CONFIRMED override -> '{_confirmed}'")
+                    existing['venue'] = _confirmed
+                    existing['venue_override_applied'] = True
+                else:
+                    _c = existing.setdefault('venue_conflict', [])
+                    if new_venue not in _c:
+                        _c.append(new_venue)
+                    print(f"  [dedup] VENUE CONFLICT on '{existing.get('name','?')}' "
+                          f"({date}): kept '{old_venue}', refused '{new_venue}' "
+                          f"(no confirmed override -- preflight will block)")
+            # Take longest/best description (keep sassy copy)
+            if len(ev.get('description') or '') > len(existing.get('description') or ''):
+                existing['description'] = ev['description']
+            # Take URL if missing
+            if ev.get('url') and not existing.get('url'):
+                existing['url'] = ev['url']
+    return result
+
+
 def cmd_generate(post_type="weekday"):
     """Generate content (caption + images) for a post."""
     print("=" * 50)
@@ -559,6 +736,24 @@ def cmd_generate(post_type="weekday"):
                 return True
             return False
 
+        # Routine bar-utility programming (open darts, free pool, trivia,
+        # karaoke, generic bingo) — weekly filler even when scraped as a dated
+        # IG post, so recurrence detection alone misses it. Ranked DOWN, never
+        # banned: it still lists, still featurable on a thin day (William
+        # 2026-07-22: "open darts should never be the event of the day").
+        _BAR_UTILITY_KW = (
+            "free pool", "pool & darts", "pool and darts", "darts",
+            "trivia", "karaoke", "happy hour", "bingo", "game night",
+            "pool night", "billiards", "open pool", "open mic",
+        )
+
+        def _bar_utility(e):
+            combo = ((e.get("name") or "") + " " + (e.get("venue") or "")).lower()
+            if any(k in combo for k in ("drag", "talent", "cabaret", "burlesque",
+                                        "revue", "showcase", "show")):
+                return False  # performance nights are marquee, never demoted
+            return any(k in combo for k in _BAR_UTILITY_KW)
+
         def _rank(e):
             # Classify on NAME + VENUE, never the generated description — so writing
             # voice copy can't reshuffle which events get featured (stable selection).
@@ -597,6 +792,7 @@ def cmd_generate(post_type="weekday"):
                 fl_bucket,                 # 2) gay-friendly (2-3🦩) beats mostly-straight (1🦩)
                 1 if junk else 0,          # 3) clean-titled events lead over junk-named ones
                 1 if rec else 0,           # 4) ONE-TIME events lead over weekly/recurring (top signal)
+                1 if _bar_utility(e) else 0,  # 4b) routine bar-utility (darts/trivia/karaoke) sinks below real events
                 0 if (submitted and not rec) else 1,  # 5) a good emailed one-off gets surfaced
                 1 if kids else 0,          # 6) kids/library filler sinks below adult events
                 0 if fun else 1,           # 7) fun, leave-the-house events first
@@ -641,6 +837,47 @@ def cmd_generate(post_type="weekday"):
                 if _dup_of_picked(e, top):
                     continue
                 top.append(e); seen.add(id(e))
+        # TOP PICK QUALITY GATE (William 2026-07-20, recurring feedback finally
+        # coded in): the pink TOP PICK box is the day's editorial hero, and a
+        # weekly bar-utility night ("Free Pool & Darts", "Trivia Night", happy
+        # hour, bingo) must NEVER headline the day when anything genuinely fun
+        # and unique exists — it makes the city look dead, the opposite of the
+        # site's whole purpose. Bar-utility nights STAY in the featured 3 (gay
+        # events still weight heavily); they just can't be slot #1 unless the
+        # day truly has nothing better. Drag/performance nights are marquee and
+        # exempt. Hero preference: one-off LGBTQ > one-off fun community >
+        # recurring LGBTQ performance > recurring LGBTQ non-utility > the rest.
+        def _hero_rank(e):
+            lg_e = _is_lgbtq_strict(e)
+            rec_e = _recurring(e)
+            util = _bar_utility(e)
+            combo = ((e.get("name") or "") + " " + (e.get("venue") or "")).lower()
+            perf = any(k in combo for k in ("drag", "talent night", "open talent",
+                                            "cabaret", "burlesque", "revue"))
+            fun = any(k in combo for k in _FUN_KW)
+            if lg_e and not rec_e and not util:
+                cls = 0          # one-off gay event — the ideal hero
+            elif not rec_e and fun and not util:
+                cls = 1          # one-off fun community event
+            elif lg_e and rec_e and perf:
+                cls = 2          # recurring drag/performance — still marquee
+            elif lg_e and not util:
+                cls = 3          # other recurring gay (non-utility)
+            elif not util:
+                cls = 4
+            else:
+                cls = 5          # weekly bar-utility — hero only if nothing else
+            return (cls, _rank(e))
+
+        if top:
+            hero = min(feat_pool, key=_hero_rank)
+            if id(hero) != id(top[0]) and _hero_rank(hero) < _hero_rank(top[0]):
+                if id(hero) in {id(t) for t in top}:
+                    top = [hero] + [t for t in top if id(t) != id(hero)]
+                elif not _dup_of_picked(hero, top):
+                    top = ([hero] + [t for t in top if id(t) != id(hero)])[:target]
+                seen = {id(t) for t in top}
+
         # Remaining eligible events keep their rank order behind the featured 3
         # (they drive the "N more events" count). Services never appear here.
         tail = [e for e in feat_pool if id(e) not in seen]
@@ -649,107 +886,6 @@ def cmd_generate(post_type="weekday"):
     # Deduplicate FIRST (collapse same-event variants, incl. the combined
     # Friday Pride Kickoff), THEN sort + select featured — so the featured 3 are
     # 3 distinct events, not the same event twice.
-    def _dedup_day(ev_list):
-        def _norm(s):
-            return re.sub(r'\W+', ' ', (s or '').lower()).strip()
-
-        def _has_address(venue):
-            v = venue or ''
-            return ',' in v or any(c.isdigit() for c in v)
-
-        from difflib import SequenceMatcher as _SM
-
-        def _fuzzy_same(a, b):
-            """Two SAME-DATE names that point at one real event scraped twice.
-            Tuned (2026-06-29) to catch 'DRAGNIFICENT! at Club Majestic' vs
-            'DRAGNIFICENT! Drag Show' and 'First Friday Art Crawl (Downtown
-            Lexington)' vs '... in Lexington Arts District', WITHOUT merging distinct
-            events like 'DJ | Gus' vs 'DJ | Sir Juice' or two different markets."""
-            na, nb = _norm(a), _norm(b)
-            if not na or not nb:
-                return False
-            if na == nb:
-                return True
-            if (na in nb or nb in na) and min(len(na), len(nb)) >= 10:
-                return True
-            ta, tb = na.split(), nb.split()
-            if ta and tb and ta[0] == tb[0] and len(ta[0]) >= 8:  # shared distinctive lead token
-                return True
-            if _SM(None, na, nb).ratio() >= 0.80:
-                return True
-            sa, sb = set(ta), set(tb)
-            if sa and sb and len(sa & sb) / len(sa | sb) >= 0.55:
-                return True
-            return False
-
-        seen = {}   # key -> index in result
-        result = []
-        for ev in ev_list:
-            name_norm = _norm(ev.get('name', ''))
-            date = ev.get('date', '')
-            venue_norm = _norm(ev.get('venue', ''))
-            # Collapse all HHHH + co-hosted Pride Kickoff variants into one
-            # bucket. On the combined First-Friday Pride Kickoff date (6/5), the
-            # Lexington Artist Fellowship First Fridays / Flagpole Go-Go events are
-            # the SAME night and fold into the one combined event.
-            _taf_first_friday = (
-                date == '2026-06-05'
-                and ('first friday' in name_norm or 'flagpole' in name_norm
-                     or 'go go' in name_norm
-                     or 'lexington artist fellowship' in venue_norm
-                     or 'flagship' in venue_norm)
-            )
-            if ('homo hotel' in name_norm or 'hhhh' in name_norm
-                    or 'pride kickoff' in name_norm or _taf_first_friday):
-                key = ('__hhhh__', date)
-            else:
-                key = (name_norm[:40], date)
-
-            idx = seen.get(key)
-            if idx is None:
-                # Fuzzy fallback: a near-identical name on the SAME date is the
-                # same real event scraped twice — OR same venue + date with
-                # overlapping name words (W28: 'Elote Drag Brunch' vs 'Drag
-                # Brunch : jul. 11th - stars, stripes & sequins', one brunch
-                # under two titles that took two featured slots).
-                try:
-                    from scraper.runner import _same_event_by_venue as _sev
-                except Exception:
-                    _sev = lambda _a, _b: False
-                for _j, _ex in enumerate(result):
-                    if _ex.get('date', '') == date and (
-                            _fuzzy_same(ev.get('name', ''), _ex.get('name', ''))
-                            or _sev(ev, _ex)):
-                        idx = _j
-                        break
-            if idx is None:
-                seen[key] = len(result)
-                result.append(dict(ev))
-            else:
-                existing = result[idx]
-                # Prefer the more informative title (one that names a venue via " at ").
-                _en = existing.get('name', '') or ''
-                _nn = ev.get('name', '') or ''
-                if ' at ' in _nn.lower() and ' at ' not in _en.lower():
-                    existing['name'] = _nn
-                # Keep the canonical "Pride Kickoff" name for the combined event.
-                if 'pride kickoff' in name_norm and 'pride kickoff' not in _norm(existing.get('name', '')):
-                    existing['name'] = ev.get('name', existing.get('name'))
-                new_venue = ev.get('venue') or ''
-                old_venue = existing.get('venue') or ''
-                # Always prefer venue that has a street address (has comma or digit)
-                if _has_address(new_venue) and not _has_address(old_venue):
-                    existing['venue'] = new_venue
-                elif _has_address(new_venue) and len(new_venue) > len(old_venue):
-                    existing['venue'] = new_venue
-                # Take longest/best description (keep sassy copy)
-                if len(ev.get('description') or '') > len(existing.get('description') or ''):
-                    existing['description'] = ev['description']
-                # Take URL if missing
-                if ev.get('url') and not existing.get('url'):
-                    existing['url'] = ev['url']
-        return result
-
     for day in days_of_week:
         before = len(events_by_day[day])
         events_by_day[day] = _dedup_day(events_by_day[day])

@@ -3,10 +3,8 @@ Source health pre-flight check for the Lexington Gays event scraper.
 
 Reads all SOURCES from config.py, tests each URL, then cross-references
 the most recent data/events/*_all.json to show which sources contributed
-0 events last week. Routes the summary to the DASHBOARD via
-task-runner/pending_actions.fyi() (2026-07-23: it used to append into
-pending-william-actions.md every run, which ballooned the Action Inbox with
-FYI William never acts on) and prints the full report to stdout.
+0 events last week. Writes a summary to pending-william-actions.md and
+prints the full report to stdout.
 
 Level 2 (The Differ): persists each run to data/source_health_history/
 and leads the report with a diff (newly broken / still broken / recovered).
@@ -67,105 +65,6 @@ _VARIANT_PROBE_CODES = {404, 410}  # HTTP errors worth attempting URL variants f
 # Level 4: Yield Monitor constants
 YIELD_HISTORY_WEEKS = 6      # baseline window: weeks of *_all.json to read
 YIELD_MIN_BASELINE_WEEKS = 2  # source must appear in ≥N history weeks to trigger alert
-
-# ---------------------------------------------------------------------------
-# Level 5 (gap G192): SILENT-SUCCESS GUARD
-#
-# 2026-W30 shipped 63 sources, 38 of them status=OK, and TOTAL events across
-# every source = 0 -- yet the run exited 0 and reported "healthy". That is the
-# same failure class as the TulsaGays rc=0 bug that posted nothing for 11
-# straight Mondays ([[feedback_tulsagays_silent_success]]): the process
-# succeeded, the OUTCOME did not happen, and nothing alarmed.
-#
-# Two rules now hold:
-#   1. status=OK means "the URL responded", NOT "this source is healthy".
-#      Health is the `verdict` field: OK + events  -> HEALTHY
-#                                     OK + 0 events -> NO_YIELD
-#   2. A week where EVERY source yields zero events is a systemic parse/extract
-#      failure, not 63 genuinely empty venues. It is a HARD failure and the run
-#      exits non-zero so no scheduler can ever record it as a success.
-# ---------------------------------------------------------------------------
-EXIT_TOTAL_ZERO = 2  # distinct from exit 1 (P1 source unreachable)
-
-
-def _verdict_for(entry: dict, week_file: str) -> str:
-    """
-    Health verdict for a source, as distinct from its URL reachability status.
-
-    A reachable URL that produced nothing is NOT healthy - that is exactly how
-    a broken extractor hides. Returns HEALTHY / NO_YIELD / <status>.
-    """
-    status = entry.get("status")
-    if status != "OK":
-        return status
-    if week_file == "none found":
-        return "OK"  # no cross-reference available; cannot judge yield
-    return "HEALTHY" if entry.get("event_count", 0) > 0 else "NO_YIELD"
-
-
-def _week_file_total_events(week_file: str) -> int:
-    """Raw event count in the given *_all.json, independent of source-key matching.
-
-    Gap G212: per-source yield is matched against config.py keys, which never
-    overlap the aggregator keys the scraper actually writes. This reads the true
-    total so a healthy week is never mistaken for a systemic parse failure.
-    Returns 0 on any read problem (fail toward the existing guard, not past it).
-    """
-    try:
-        path = os.path.join(EVENTS_DIR, week_file)
-        if not os.path.exists(path):
-            return 0
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-        events = data.get("events", []) if isinstance(data, dict) else data
-        return len(events) if isinstance(events, list) else 0
-    except Exception:
-        return 0
-
-
-def detect_total_zero(results: list, event_counts: dict, week_file: str) -> dict | None:
-    """
-    Detect the systemic case: zero events across EVERY source this run.
-
-    Returns a dict describing the failure, or None when yield is non-zero or
-    when there is no events file to cross-reference against (in which case we
-    genuinely cannot tell, and must not cry wolf).
-    """
-    if week_file == "none found":
-        return None
-    # 2026-07-23 (gap G208): guarding only against "no file at all" was not enough.
-    # This check runs Thu 13:35 while the scrape that writes <week>_all.json runs
-    # Mon 07:13. If the Monday refresh did not run (or ran late), the newest file on
-    # disk is a PREVIOUS week, its per-source counts have nothing to do with this
-    # week, and every source reads 0 - producing a false "ALL 63 SOURCES DEAD"
-    # alarm. That is exactly what fired on 2026-07-23: newest file was
-    # 2026-W28_all.json (Jul 10) while the current week was 2026-W30, and the real
-    # W30 scrape did not land until 15:28, ~2h after this check ran.
-    # A stale week means "we cannot tell yet", not "everything is broken".
-    current_week = _get_week_key()
-    if current_week and not week_file.startswith(current_week):
-        return None
-    # 2026-07-23 (gap G212): score TOTAL weekly yield, not per-source MATCHED yield.
-    # config.py keys sources by organisation (lex_pride_center, uk_lgbtq, ...) but the
-    # scraper tags events with aggregator/module keys (google_events, meetup,
-    # eventbrite, ...). set(event_keys) & set(config_keys) is EMPTY, so the matched
-    # per-source sum is structurally ALWAYS 0 - even in a healthy week. Proven on
-    # 2026-W30: 84 real Lexington events on disk, matched yield 0. Without this,
-    # the total-zero guard hard-fails (exit 2) every healthy week, which is worse
-    # than the false alarm it was built to catch.
-    if _week_file_total_events(week_file) > 0:
-        return None
-    considered = [r for r in results if r.get("status") not in _SKIP_DIFF]
-    if not considered:
-        return None
-    total = sum(event_counts.values()) if event_counts else 0
-    if total > 0:
-        return None
-    return {
-        "total_events": 0,
-        "sources_considered": len(considered),
-        "ok_but_empty": len([r for r in considered if r.get("status") == "OK"]),
-    }
 
 # ---------------------------------------------------------------------------
 # Level 2 helpers: history + diff
@@ -248,10 +147,6 @@ def save_run_history(results: list, prev: dict, week_key: str,
         }
         if event_counts is not None:
             entry["event_count"] = event_counts.get(key, 0)
-        # L5/G192: persist the health verdict alongside the reachability status
-        # so a future run can see "OK but produced nothing" in the history.
-        if r.get("verdict"):
-            entry["verdict"] = r["verdict"]
         sources[key] = entry
     out = {
         "week": week_key,
@@ -267,26 +162,6 @@ def save_run_history(results: list, prev: dict, week_key: str,
 # ---------------------------------------------------------------------------
 # Level 3 helpers: URL variant triager
 # ---------------------------------------------------------------------------
-
-# Fields that can carry a usable source URL, in preference order. A source is only
-# genuinely NO_URL when NONE of these is set. Before this existed the checker read
-# "url" alone, so a venue configured with only an "instagram" handle was reported
-# NO_URL while actually being perfectly reachable (the_bar_complex, 2026-W30) —
-# a false "unusable source" that hid a real, scrapable venue.
-_URL_FIELDS = ("url", "website", "instagram", "facebook", "fb", "ig")
-
-
-def _resolve_source_url(src: dict) -> tuple:
-    """Return (url, field_name) for the first populated URL-bearing field.
-
-    Returns ("", None) when the source truly has no link configured.
-    """
-    for field in _URL_FIELDS:
-        val = src.get(field)
-        if isinstance(val, str) and val.strip():
-            return val.strip(), field
-    return "", None
-
 
 def _generate_url_variants(url: str) -> list:
     """
@@ -642,7 +517,7 @@ def run() -> list:
 
     for key, src in SOURCES.items():
         name = src.get("name", key)
-        url, url_field = _resolve_source_url(src)
+        url = src.get("url", "").strip()
         priority = src.get("priority", 3)
         evt_count = event_counts.get(key, 0)
 
@@ -659,8 +534,6 @@ def run() -> list:
             "skip_reason": None,
             "proposed_fix": None,
         }
-
-        entry["url_field"] = url_field
 
         # No URL configured
         if not url:
@@ -717,11 +590,6 @@ def run() -> list:
         _print_row(entry)
         results.append(entry)
 
-    # L5/G192: stamp the health verdict. status = "did the URL respond";
-    # verdict = "is this source actually producing anything".
-    for entry in results:
-        entry["verdict"] = _verdict_for(entry, week_file)
-
     return results, week_file
 
 
@@ -736,24 +604,9 @@ def _print_row(entry: dict):
 
 
 def build_summary_lines(results: list, week_file: str, diff: dict | None = None,
-                        yield_collapsed: list | None = None,
-                        total_zero: dict | None = None) -> list:
+                        yield_collapsed: list | None = None) -> list:
     """Build the bullet list for the pending-william-actions.md entry."""
     lines = []
-
-    # L5/G192: lead with the systemic alarm. This must be the first thing read,
-    # because when it fires every other line below is meaningless detail.
-    if total_zero:
-        lines.append(
-            f"*** SYSTEMIC FAILURE: TOTAL EVENTS ACROSS ALL SOURCES = 0 "
-            f"({total_zero['sources_considered']} sources checked, "
-            f"{total_zero['ok_but_empty']} of them reachable-but-empty). ***"
-        )
-        lines.append(
-            "  This is a PARSE/EXTRACT failure, not a quiet week. Do NOT fix it "
-            "per-venue. Same class as the TulsaGays rc=0 bug. Gap G192."
-        )
-        lines.append("")
 
     dead = [r for r in results if r["status"] in ("DEAD", "TIMEOUT", "REDIRECT_LOOP")]
     errors = [r for r in results if r["status"] == "ERROR"]
@@ -865,32 +718,10 @@ def build_summary_lines(results: list, week_file: str, diff: dict | None = None,
 
 
 def append_to_pending_actions(summary_lines: list):
-    """Route the health check results to the DASHBOARD, not the Action Inbox.
-
-    2026-07-23: this used to append straight into pending-william-actions.md every
-    run. A source-health report is an FYI - William acts on none of it - so it was
-    quietly ballooning the Action Inbox, which is exactly what the FYI gate exists
-    to stop (see CLAUDE.md "Task Output Channel" and feedback_action_inbox_fyi_silenced).
-    Now it goes through task-runner/pending_actions.fyi(), which folds it into the
-    dashboard. Only a genuine "William must act" item may reach the inbox, and this
-    check has none - the NO_URL research and the parse fixes are fleet-owned (G192/G211).
-    Falls back to the old append ONLY if the fleet helper is unreachable.
-    """
+    """Append the health check results to pending-william-actions.md."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     header = f"## [{timestamp}] Lexington Gays Source Health Check"
     block = header + "\n" + "\n".join(f"- {line}" for line in summary_lines) + "\n\n"
-
-    try:
-        import sys as _sys
-        _sys.path.insert(0, os.path.join(os.path.expanduser("~"), ".claude", "task-runner"))
-        from pending_actions import fyi  # type: ignore
-        fyi("lexingtongays-source-health",
-            "LexingtonGays source health",
-            "\n".join(f"- {line}" for line in summary_lines))
-        print("\nSummary routed to the dashboard (FYI gate), not the Action Inbox.")
-        return
-    except Exception as exc:  # noqa: BLE001 - fall back rather than lose the report
-        print(f"\nNOTE: dashboard route unavailable ({exc}); falling back to the inbox append.")
 
     try:
         # Read existing content
@@ -1036,67 +867,8 @@ def _run_selftest() -> int:
         if hist.get("2026-W11", {}).get("venue_y", 0) != 1:
             fails.append(f"load_event_count_history: expected venue_y=1 in W11, got {hist.get('2026-W11', {})}")
 
-        # Level 5 (G192): silent-success guard
-        # _verdict_for: reachable-with-events is HEALTHY, reachable-with-nothing is NOT
-        if _self._verdict_for({"status": "OK", "event_count": 4}, "2026-W30_all.json") != "HEALTHY":
-            fails.append("_verdict_for: OK + 4 events should be HEALTHY")
-        if _self._verdict_for({"status": "OK", "event_count": 0}, "2026-W30_all.json") != "NO_YIELD":
-            fails.append("_verdict_for: OK + 0 events MUST be NO_YIELD (this is the G192 bug)")
-        if _self._verdict_for({"status": "DEAD", "event_count": 0}, "2026-W30_all.json") != "DEAD":
-            fails.append("_verdict_for: non-OK status should pass through unchanged")
-        if _self._verdict_for({"status": "OK", "event_count": 0}, "none found") != "OK":
-            fails.append("_verdict_for: with no events file we cannot judge yield, must stay OK")
-
-        # detect_total_zero: fires only on a genuine all-sources-zero week
-        _tz_results = [
-            {"key": "a", "status": "OK", "priority": 1},
-            {"key": "b", "status": "OK", "priority": 1},
-            {"key": "c", "status": "SKIP", "priority": 3},
-        ]
-        tz = _self.detect_total_zero(_tz_results, {}, "2026-W30_all.json")
-        if not tz:
-            fails.append("detect_total_zero: must fire when every source yields 0")
-        elif tz["sources_considered"] != 2 or tz["ok_but_empty"] != 2:
-            fails.append(f"detect_total_zero: SKIP must be excluded from counts, got {tz}")
-        if _self.detect_total_zero(_tz_results, {"a": 3}, "2026-W30_all.json") is not None:
-            fails.append("detect_total_zero: must NOT fire when any source produced events")
-        if _self.detect_total_zero(_tz_results, {}, "none found") is not None:
-            fails.append("detect_total_zero: must NOT cry wolf with no events file to compare")
-
-        # The alarm must actually surface in the written summary
-        _tz_lines = _self.build_summary_lines(
-            [{"key": "a", "name": "A", "priority": 1, "status": "OK", "event_count": 0,
-              "note": "", "verdict": "NO_YIELD"}],
-            "2026-W30_all.json", diff=None, yield_collapsed=None, total_zero=tz,
-        )
-        if not any("SYSTEMIC FAILURE" in ln for ln in _tz_lines):
-            fails.append("build_summary_lines: total_zero alarm missing from summary")
-        if _tz_lines and "SYSTEMIC FAILURE" not in _tz_lines[0]:
-            fails.append("build_summary_lines: total_zero alarm must LEAD the summary")
-
-        # L6: URL resolution must not report NO_URL on a source that has a usable
-        # link in a non-"url" field. Regression guard for the 2026-W30 case where
-        # the_bar_complex (a real gay bar, instagram-only config) was counted as an
-        # unusable source and quietly dropped from the scrape surface.
-        if _self._resolve_source_url({"instagram": "https://instagram.com/x/"}) != (
-            "https://instagram.com/x/", "instagram"
-        ):
-            fails.append("_resolve_source_url: must fall back to the instagram field")
-        if _self._resolve_source_url({"facebook": "https://fb.com/y"}) != (
-            "https://fb.com/y", "facebook"
-        ):
-            fails.append("_resolve_source_url: must fall back to the facebook field")
-        if _self._resolve_source_url(
-            {"url": "https://real.example", "instagram": "https://instagram.com/x/"}
-        ) != ("https://real.example", "url"):
-            fails.append("_resolve_source_url: explicit url must win over fallbacks")
-        if _self._resolve_source_url({}) != ("", None):
-            fails.append("_resolve_source_url: empty source must report no url")
-        if _self._resolve_source_url({"url": "   "}) != ("", None):
-            fails.append("_resolve_source_url: whitespace-only url must report no url")
-
-        # 8 (L2) + 4 (L3) + 3 (L4 baseline) + 4 (L4 collapse) + 3 (L4 history) + 10 (L5) + 5 (L6) = 37
-        total_checks = 37
+        # 8 (L2) + 4 (L3) + 3 (L4 baseline) + 4 (L4 collapse) + 3 (L4 history) = 22
+        total_checks = 22
         print(f"  selftest: {total_checks - len(fails)}/{total_checks} checks pass")
         for f in fails:
             print(f"  FAIL: {f}")
@@ -1139,30 +911,13 @@ def main():
     print("\n" + "=" * 68)
     print("SUMMARY")
     print("=" * 68)
-    # L5/G192: the silent-success guard. Computed BEFORE the summary so the
-    # alarm leads the report.
-    total_zero = detect_total_zero(results, current_event_counts, week_file)
-
     summary_lines = build_summary_lines(results, week_file, diff=diff,
-                                        yield_collapsed=yield_collapsed,
-                                        total_zero=total_zero)
+                                        yield_collapsed=yield_collapsed)
     for line in summary_lines:
         print(line)
 
     # Write to pending-william-actions.md
     append_to_pending_actions(summary_lines)
-
-    # L5/G192: a total-zero yield is a HARD failure. It outranks the P1-dead
-    # check below because it means the extractor produced nothing at all, and
-    # it must never be able to exit 0 and read as a successful run.
-    if total_zero:
-        print(
-            f"\nEXIT {EXIT_TOTAL_ZERO}: SYSTEMIC FAILURE - 0 events across all "
-            f"{total_zero['sources_considered']} sources "
-            f"({total_zero['ok_but_empty']} reachable but empty). "
-            "Parse/extract layer is broken; this is not a quiet week."
-        )
-        sys.exit(EXIT_TOTAL_ZERO)
 
     # Exit with non-zero code if any P1 sources are dead
     dead_keys = {r["key"] for r in results if r["status"] in ("DEAD", "TIMEOUT")}

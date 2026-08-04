@@ -27,18 +27,16 @@ from scraper import (
     churches,
     bars,
     manual_input,
+    major_events,
+    lexington_arts_district,
     facebook_events,
     ticketing_sites,
     timetree_scraper,
     slack_browser_scraper,
+    studio66,
     instagram_orgs,
     rendered_sites,
 )
-# major_events / studio66 / (the former "lexington_arts_district") were Tulsa-only
-# modules (Tulsa Tough, @studio.66_, Tulsa Arts District) that a blind city sync
-# find-replaced into this file without the underlying Lexington-specific modules
-# ever being built — see gap G181. Dropped from the import + scraper list below
-# until real Lexington equivalents exist; do not fabricate Lexington venue data.
 from scraper.relevance import compile_keywords
 
 logger = logging.getLogger(__name__)
@@ -192,6 +190,49 @@ def _venues_match(venue_a: str, venue_b: str) -> bool:
     return a in b or b in a
 
 
+# Venue words that prove nothing about WHICH building this is: geography, and
+# the generic nouns half of Lexington's venues share. 'Courtyard Downtown' and
+# 'Dennis R. Neill Equality Center' must not read as the same place just
+# because both are downtown.
+_VENUE_PLACE_GENERIC = {
+    "the", "a", "an", "of", "at", "and", "on", "in",
+    "lexington", "ok", "okla", "oklahoma", "downtown", "midtown", "north", "south",
+    "east", "west", "st", "ave", "avenue", "street", "rd", "road", "blvd",
+    "suite", "ste", "center", "centre", "hall", "room", "bar", "club", "cafe",
+    "hotel", "lounge", "house", "place", "building", "venue",
+}
+
+
+def _venue_place_tokens(venue: str) -> set:
+    """Distinctive tokens of a venue's NAME segment (everything before the first
+    comma, i.e. 'Courtyard Downtown' out of 'Courtyard Downtown, 415 S Boston
+    Ave'). Street numbers and generic/geographic words are dropped, so what's
+    left is what actually identifies the building."""
+    name_part = (venue or "").split(",")[0]
+    # Strip possessives BEFORE normalizing ("Elote's brunch" -> "elote brunch"),
+    # so a copy mention and the venue field agree on the same word.
+    name_part = re.sub(r"['’]s\b", "", name_part)
+    toks = _normalize(name_part).split()
+    return {t for t in toks
+            if t not in _VENUE_PLACE_GENERIC and not t.isdigit() and len(t) > 1}
+
+
+def _same_venue_place(venue_a: str, venue_b: str) -> bool:
+    """True only when both venue strings name the SAME building.
+
+    Deliberately conservative: two venues are the same place only if they share
+    a distinctive (non-generic, non-geographic) token. 'Courtyard Lexington
+    Downtown' vs 'Courtyard Downtown, 415 S Boston Ave' -> {courtyard} shared,
+    same place. 'Courtyard Lexington Downtown' vs 'Dennis R. Neill Equality Center,
+    621 E 4th St' -> {courtyard} vs {dennis, neill, equality}, nothing shared,
+    DIFFERENT places. When either side has no distinctive token left, the answer
+    is False (unknown reads as different, so callers fail closed)."""
+    ta, tb = _venue_place_tokens(venue_a), _venue_place_tokens(venue_b)
+    if not ta or not tb:
+        return False
+    return bool(ta & tb)
+
+
 # Words too generic to prove two same-venue titles are one event ("Non-binary
 # Support Group" vs "Gender Outreach Support Group" are DIFFERENT groups).
 _VENUE_DEDUP_GENERIC = {
@@ -272,8 +313,31 @@ def deduplicate(events: List[Dict]) -> List[Dict]:
 
                 def _has_addr(v):
                     return "," in (v or "") or any(c.isdigit() for c in (v or ""))
-                if _has_addr(loser.get("venue")) and not _has_addr(winner.get("venue")):
-                    winner["venue"] = loser["venue"]
+
+                # VENUE BACKFILL -- enrich, NEVER relocate (fixed 2026-08-04).
+                # The old rule was "loser's venue looks like an address and the
+                # winner's doesn't, so take the loser's". It never checked the two
+                # strings named the same building, so W32's HHHH merge overwrote the
+                # winner's 'Courtyard Lexington Downtown' with an OkEq-sourced 'Dennis R.
+                # Neill Equality Center, 621 E 4th St' -- a different building a mile
+                # away -- and that address went out on the carousel cover slide while
+                # the slide's own title still said Courtyard Downtown.
+                # Now: only fill a BLANK venue, or add street detail to the SAME
+                # place. Two different places never overwrite; the conflict is
+                # recorded so preflight can block on it.
+                _wv, _lv = (winner.get("venue") or "").strip(), (loser.get("venue") or "").strip()
+                if _lv and not _wv:
+                    winner["venue"] = _lv
+                elif _lv and _wv and _same_venue_place(_wv, _lv) and _has_addr(_lv) and not _has_addr(_wv):
+                    winner["venue"] = _lv
+                elif _lv and _wv and not _same_venue_place(_wv, _lv):
+                    conflicts = winner.setdefault("venue_conflict", [])
+                    if _lv not in conflicts:
+                        conflicts.append(_lv)
+                    logger.warning(
+                        "[dedup] venue conflict on '%s' (%s): kept '%s', refused to "
+                        "overwrite with '%s' from the merged duplicate",
+                        winner.get("name", "?"), winner.get("date", "?"), _wv, _lv)
                 if len(loser.get("description") or "") > len(winner.get("description") or ""):
                     winner["description"] = loser["description"]
                 if loser.get("url") and not winner.get("url"):
@@ -810,21 +874,20 @@ def save_results(events: List[Dict], week_key: str = None):
     if week_key is None:
         week_key = get_week_key()
 
-    # G204 GEO GUARD: drop events that belong to a DIFFERENT city before any
-    # file is written. 2026-W30 published 14 of 84 events at Tulsa venues
-    # (Philbrook, Circle Cinema, the Dennis R. Neill Equality Center, and
-    # qlist.app/events/Tulsa/...) relabelled as Lexington - real addresses that
-    # do not exist in this metro. The offending scrapers live in SHARED files
-    # that sync_from_tulsa.py overlays, so deleting them locally gets reverted;
-    # guarding at the single write choke point is sync-safe and protects
-    # _all/_weekday/_weekend in one place.
-    # Fail-OPEN by design: a guard bug must never take the whole site down.
+    # G204 GEO GUARD: drop events belonging to a DIFFERENT city before any file
+    # is written. Found on LexingtonGays 2026-07-23, where 14 of 84 events were
+    # published at LEXINGTON venues (Philbrook, Circle Cinema, Dennis R. Neill
+    # Equality Center, qlist.app/events/Lexington/...) relabelled as Lexington -
+    # addresses that do not exist in that metro. The offending scrapers live in
+    # THIS shared file tree, which sync_from_lexington.py overlays onto every city
+    # site, so the guard belongs here in the master and propagates outward.
+    # Guarding at the single write choke point covers _all/_weekday/_weekend.
+    # Fail-OPEN by design: a guard bug must never take a site down. If no city
+    # is configured it REFUSES TO GUESS and passes everything through.
     try:
         from tools.geo_guard import filter_events as _geo_filter, resolve_city as _resolve_city
         _city = _resolve_city(config)
         if not _city:
-            # No city configured. Do NOT guess - guessing the wrong city here
-            # would filter out the site's own legitimate events. Skip loudly.
             raise RuntimeError(
                 "no CITY_NAME/CITY/SITE_CITY in config - refusing to guess a city")
         _kept, _dropped = _geo_filter(events, _city)
@@ -882,6 +945,7 @@ def run_all_scrapers() -> List[Dict]:
     # Ordered by importance/reliability
     scrapers = [
         ("manual_input", manual_input.scrape),  # Always first — manually curated, priority honored (default 1)
+        ("major_events", major_events.scrape),  # Marquee Lexington civic events (Lexington Tough, Route 66 centennial, State Fair, Oktoberfest...) — website coverage, priority 3
         ("recurring", recurring.scrape),
         ("okeq_calendar", okeq_calendar.scrape),
         ("twisted_arts", twisted_arts.scrape),
@@ -895,9 +959,11 @@ def run_all_scrapers() -> List[Dict]:
         ("aa_meetings", aa_meetings.scrape),
         ("qlist", qlist.scrape),
         ("community_groups", community_groups.scrape),
+        ("studio_66", studio66.scrape),  # @studio.66_ IG via authenticated instagrapi session
         ("instagram_orgs", instagram_orgs.scrape),  # IG-only orgs: KLASSIC (@upflykai), Goff Center (@goff_fest)
         ("churches", churches.scrape),
         ("bars", bars.scrape),
+        ("lexington_arts_district", lexington_arts_district.scrape),
         ("facebook_events", facebook_events.scrape),
         ("ticketing_sites", ticketing_sites.scrape),
         ("timetree_scraper", timetree_scraper.scrape),  # Lexington Isn't Boring -- iCal/Playwright/browser-flag

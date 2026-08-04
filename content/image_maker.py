@@ -170,6 +170,12 @@ _VENUE_JUNK_EXACT = {
     'tickets', 'tickets & info', 'more info', 'more information', 'mar',
     'tba', 'tbd', 'online', 'virtual',
 }
+# Relative-date leakage: Eventbrite / Google Events cards put "in 5 days",
+# "Tomorrow" etc. where the venue should be. Pattern, not exact-match, because
+# the number changes daily. Kept in sync with tools/gen_website_html.py.
+_VENUE_JUNK_RE = re.compile(
+    r'^(in\s+(a|an|\d+)\s+(day|days|hour|hours|week|weeks|month|months)'
+    r'|today|tonight|tomorrow|yesterday|this\s+\w+|next\s+\w+)$', re.I)
 # Known address fragments → display name. City-specific. Read from config.VENUE_NAME_MAP
 # with safe empty fallback for new-city scaffolds.
 _VENUE_NAME_MAP = getattr(config, "VENUE_NAME_MAP", {})
@@ -183,6 +189,8 @@ def clean_venue(raw: str) -> str:
     if any(low.startswith(j) for j in _VENUE_JUNK):
         return ''
     if low.rstrip('.!') in _VENUE_JUNK_EXACT:
+        return ''
+    if _VENUE_JUNK_RE.match(low.rstrip('.!')):
         return ''
     # Map known address fragments to business names
     for addr, name in _VENUE_NAME_MAP.items():
@@ -577,10 +585,17 @@ def make_cover_slide(post_type: str, date_range: str,
                      featured_event: Optional[Dict] = None,
                      tagline: Optional[str] = None,
                      upcoming_event: Optional[Dict] = None,
-                     featured_events: Optional[List[Dict]] = None) -> Image.Image:
+                     featured_events: Optional[List[Dict]] = None,
+                     headline: Optional[str] = None,
+                     feature_label: Optional[str] = None,
+                     footer_note: Optional[str] = None) -> Image.Image:
     """Slide 1: Cover + Event of the Week.
     Top ~half: LEXINGTON GAYS branding + date.
     Bottom half: featured event of the week with name, time, venue, pitch.
+
+    headline / feature_label / footer_note override the week-framed strings so
+    the same cover engine can front a weekend carousel ("THIS WEEKEND IN
+    LEXINGTON" / "PICK OF THE WEEKEND"). Defaults preserve the Monday deck exactly.
     """
     img = Image.new("RGB", SIZE, BG)
     draw = ImageDraw.Draw(img)
@@ -609,7 +624,7 @@ def make_cover_slide(post_type: str, date_range: str,
 
     # ── Top branding block ────────────────────────────────────────────────
     y = 28
-    y = _draw_centered(draw, "YOUR LGBTQIA+ WEEK IN LEXINGTON", y, f_week_label, WHITE)
+    y = _draw_centered(draw, headline or "YOUR LGBTQIA+ WEEK IN LEXINGTON", y, f_week_label, WHITE)
     y += 6
     bar_accent_w = 180
     draw.rectangle([(W - bar_accent_w) // 2, y, (W + bar_accent_w) // 2, y + 3], fill=NEON_PINK)
@@ -705,7 +720,7 @@ def make_cover_slide(post_type: str, date_range: str,
 
         eotw_box_top = y - 10
 
-        y = _draw_centered(draw, "EVENT OF THE WEEK", y, f_eotw_label, WHITE)
+        y = _draw_centered(draw, feature_label or "EVENT OF THE WEEK", y, f_eotw_label, WHITE)
         y += 16
 
         name_font = f_eotw_name if len(ev_name) <= 32 else f_eotw_name2
@@ -827,7 +842,8 @@ def make_cover_slide(post_type: str, date_range: str,
     _pink_bar(draw, H - 100, height=2)
     _draw_centered(draw, "LEXINGTONGAYS.COM", H - 88, f_footer, WHITE)
     f_footer_cta = _font("segoe", 17)
-    _draw_centered(draw, "Hundreds of fabulous events this week \u00b7 visit to see the full list",
+    _draw_centered(draw,
+                   footer_note or "Hundreds of fabulous events this week \u00b7 visit to see the full list",
                    H - 48, f_footer_cta, LIGHT_GRAY)
     _pink_bar(draw, H - 10, height=3)
     _watermark(draw)

@@ -64,6 +64,25 @@ _HOOK_TEMPLATES = [
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
+import re as _re_mod
+
+# Relative-date leakage from Eventbrite / Google Events cards lands in the venue
+# field ("in 5 days", "Tomorrow"). Interpolating it produced live copy reading
+# "Summer Meltdown Half Marathon at in 5 days" on 85 site cards (2026-07-31).
+# Treat a junk venue as NO venue, here at the source of the sentence.
+_RELATIVE_DATE_VENUE_RE = _re_mod.compile(
+    r'^(in\s+(a|an|\d+)\s+(day|days|hour|hours|week|weeks|month|months)'
+    r'|today|tonight|tomorrow|yesterday|this\s+\w+|next\s+\w+|tba|tbd)$', _re_mod.I)
+
+
+def _usable_venue(raw):
+    """Venue string fit to drop into a sentence, or '' when it is scraper junk."""
+    v = (raw or "").strip()
+    if not v or _RELATIVE_DATE_VENUE_RE.match(v.rstrip('.!')):
+        return ""
+    return v
+
+
 def _classify_event(event: dict) -> str:
     """Return a category string for a single event."""
     name_lower = (event.get("name") or "").lower()
@@ -206,6 +225,29 @@ def _strip_em_dashes(text: str) -> str:
 # copy, so every path that ships text to a human should call this on its output.
 def strip_em_dashes(text: str) -> str:
     return _strip_em_dashes(text)
+
+
+# LLM meta-chatter that occasionally leaks ahead of the real caption ("okay
+# writing this one straight from the brief since everything needed ... is
+# already fully specified in the prompt."). Never part of the post — drop
+# leading paragraphs that talk ABOUT the task instead of TO the audience.
+# Seen live 2026-07-22 in a W30 caption regen.
+_PREAMBLE_MARKERS = (
+    "the brief", "the prompt", "the instructions", "as requested",
+    "here's the caption", "here is the caption", "here's your caption",
+    "writing this one", "fully specified", "voice rules",
+)
+
+
+def _strip_llm_preamble(text: str) -> str:
+    parts = (text or "").split("\n\n")
+    while parts:
+        first = parts[0].strip().lower()
+        if first and any(m in first for m in _PREAMBLE_MARKERS) and len(first) < 300:
+            parts.pop(0)
+            continue
+        break
+    return "\n\n".join(parts).strip() or (text or "")
 
 
 _REFUSAL_MARKERS = (
@@ -352,6 +394,7 @@ mention it.
         )
 
     caption = _strip_em_dashes(caption)
+    caption = _strip_llm_preamble(caption)
 
     return {
         "caption": caption,
@@ -1101,7 +1144,7 @@ _VOICE_BANK = {
 def _rule_based_enrich(event: dict) -> str:
     """Generate a sassy, action-oriented pitch that makes people want to go."""
     name = (event.get("name") or "").lower()
-    venue = (event.get("venue") or "").strip()
+    venue = _usable_venue(event.get("venue"))
     time  = (event.get("time") or "").strip()
     src   = (event.get("source") or "").lower()
     existing = (event.get("description") or "").strip()
@@ -1296,7 +1339,7 @@ def _rule_based_website_description(event: dict, short: str) -> str:
     beat (day / time / venue) so the website isn't templated filler. Distinct from the
     short slide line so the two fields never read identically."""
     import datetime as _dt
-    venue = (event.get("venue") or "").split(",")[0].strip()
+    venue = _usable_venue((event.get("venue") or "").split(",")[0])
     time = (event.get("time") or "").strip()
     date = (event.get("date") or "").strip()
     weekday = ""
