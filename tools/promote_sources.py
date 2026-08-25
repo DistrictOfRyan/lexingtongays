@@ -109,7 +109,8 @@ def _queue_for_review(rows, today):
     if not fresh:
         return 0
 
-    lines = [f"\n## [{today}] TulsaGays source-growth: {len(fresh)} new source(s) to review\n"]
+    city_label = getattr(config, "CITY_NAME", "TulsaGays")
+    lines = [f"\n## [{today}] {city_label}Gays source-growth: {len(fresh)} new source(s) to review\n"]
     lines.append("Reply to approve; these were found but scored medium-confidence. "
                  "To approve, add them to `data/dynamic_sources.json` (or tell me to).\n")
     for r in fresh:
