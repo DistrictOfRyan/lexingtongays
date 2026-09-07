@@ -12,6 +12,18 @@ from datetime import datetime
 CITY_NAME = "Lexington"
 CITY_STATE = "KY"
 
+# ---------------------------------------------------------------------------
+# CITY-SPECIFIC GEO. Added 2026-09-07 after LexingtonGays was found scraping
+# Oklahoma for months. Bounding box is "lat_min,lon_min,lat_max,lon_max" from
+# OpenStreetMap Nominatim. sync_from_tulsa.py preserves config.py, so these
+# stay correct per city while the scraper that reads them stays shared.
+# ---------------------------------------------------------------------------
+CITY_BBOX = "37.85,-84.66,38.21,-84.28"  # Lexington, KY
+
+SITE_URL = "https://www.lexingtongays.com"    # CITY-SPECIFIC. Read by tools/gen_website_html.py
+BRAND_NAME = "Lexington Gays"   # CITY-SPECIFIC. Organizer name + footer brand.
+
+
 # Load .env if present
 _env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(_env_file):
@@ -745,3 +757,26 @@ def current_week_key():
     """Get a key for the current week like '2026-W13'."""
     now = datetime.now()
     return f"{now.year}-W{now.isocalendar()[1]:02d}"
+
+# ── Key-venue watchdog (set 2026-09-07) ───────────────────────────────────────
+# scraper/runner.py defines a DEFAULT KEY_VENUE_SOURCES and warns when one of
+# those sources returns 0 events in a week, on the reasoning that a trusted bar
+# going silent is a scrape failure rather than a quiet week.
+#
+# That default was city-swapped into this repo as lexington_eagle_ig /
+# club_majestic_ig / ybr_ig / studio_66. None of those four source keys exist
+# here: they are absent from SOURCES above, and unlike TulsaGays (whose
+# scraper/instagram_orgs.py really does emit tulsa_eagle_ig, club_majestic_ig
+# and ybr_ig, and whose config lists them) Lexington has no scraper that can
+# ever produce them. So the warning could only ever fire, every single week,
+# forever - and it did, landing a false "key venues silent, likely a silent
+# scrape failure" item in William's action inbox each week.
+#
+# Set to EMPTY rather than repointed. The obvious repoint - the real Lexington
+# bar sources the_bar_complex / crossings / bar_ona / harveys_bar - was checked
+# and they returned 0 events in 2026-W37 too, so it would have renamed the false
+# alarm rather than removed it. The genuine gap is that Lexington has no
+# venue-level scrapers at all; that is tracked in the gap ledger, not as a
+# weekly nag. City-site expansion is parked until TulsaGays earns on its own,
+# so building those scrapers is deliberately NOT being done here.
+KEY_VENUE_SOURCES = {}

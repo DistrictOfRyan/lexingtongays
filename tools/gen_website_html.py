@@ -367,6 +367,28 @@ for day in DAYS:
 #   - Tier priority: HH → Council Oak → Drag → Queer Perf → Trusted LGBTQ → LGBTQ keywords
 from eotw_selector import select_eotw_list
 
+# ---------------------------------------------------------------------------
+# City identity for schema output. Derived from config (2026-09-07) because the
+# hardcoded pair below was find-replaced city-by-city and the STATE never got
+# replaced: LexingtonGays emitted addressLocality "Lexington" with addressRegion
+# "OK" on every event, including its genuine Kentucky ones.
+# Fail loud rather than guessing: a wrong state on every event is worse than a
+# crash the weekly run surfaces.
+# ---------------------------------------------------------------------------
+try:
+    import config as _sitecfg
+    _SITE_CITY = (getattr(_sitecfg, "CITY_NAME", "") or "").strip()
+    _SITE_STATE = (getattr(_sitecfg, "CITY_STATE", "") or "").strip().upper()
+    _SITE_URL_CFG = (getattr(_sitecfg, "SITE_URL", "") or "").strip().rstrip("/")
+    _SITE_BRAND = (getattr(_sitecfg, "BRAND_NAME", "") or "").strip()
+except Exception:
+    _SITE_CITY = _SITE_STATE = _SITE_URL_CFG = _SITE_BRAND = ""
+if not (_SITE_CITY and _SITE_STATE and _SITE_URL_CFG and _SITE_BRAND):
+    raise SystemExit("[gen_website_html] CITY_NAME/CITY_STATE/SITE_URL/BRAND_NAME "
+                     "missing from config.py; refusing to emit a page with a "
+                     "guessed city, domain or brand.")
+
+
 all_flat = [e for day in DAYS for e in events_by_day[day]]
 
 # FINAL de-dup, immediately before render, on the EXACT events the cards iterate
@@ -421,7 +443,7 @@ def esc(s):
           .replace(' – ', ', ').replace('–', '-'))
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
-SITE = 'https://www.lexingtongays.com'
+SITE = _SITE_URL_CFG
 
 def _slugify_js(s):
     """Mirror the client-side _slugify() in docs/index.html EXACTLY so the
@@ -518,9 +540,9 @@ def _extract_address(raw: str) -> str:
     """Extract a street address from a raw location string for a separate display line.
 
     Examples:
-      "Lexington Eagle, 1338 E 3rd St, Lexington, KY"  → "1338 E 3rd St"
-      "1338 E 3rd St, Lexington, KY"               → "1338 E 3rd St"
-      "Lexington Eagle"                             → ""
+      "Tulsa Eagle, 1338 E 3rd St, Tulsa, OK"  → "1338 E 3rd St"
+      "1338 E 3rd St, Tulsa, OK"               → "1338 E 3rd St"
+      "Tulsa Eagle"                             → ""
     """
     v = (raw or '').strip()
     if not v:
@@ -713,7 +735,7 @@ result = '\n'.join(lines)
 # Optional weekly SPONSOR credit (monetization slot, 2026-06-15). Renders ONLY if
 # data/sponsor.json exists with a name — otherwise a no-op, so the default site is
 # unchanged until a sponsor is signed. Anonymity-safe: credits a sponsor OF the
-# guide, never the operator. Pairs with drafts/sponsor/lexingtongays_sponsor_onepager.md.
+# guide, never the operator. Pairs with drafts/sponsor/tulsagays_sponsor_onepager.md.
 _sponsor_html = ''
 try:
     _sp_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'sponsor.json')
@@ -859,11 +881,11 @@ for _ev in all_flat:
         "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
         "location": {
             "@type": "Place",
-            "name": _venue or "Lexington, KY",
-            "address": {"@type": "PostalAddress", "addressLocality": "Lexington",
-                        "addressRegion": "OK", "addressCountry": "US"},
+            "name": _venue or f"{_SITE_CITY}, {_SITE_STATE}",
+            "address": {"@type": "PostalAddress", "addressLocality": _SITE_CITY,
+                        "addressRegion": _SITE_STATE, "addressCountry": "US"},
         },
-        "organizer": {"@type": "Organization", "name": "Lexington Gays", "url": SITE},
+        "organizer": {"@type": "Organization", "name": _SITE_BRAND, "url": SITE},
         "image": SITE + "/images/og-event.png",
     }
     _desc = (_ev.get('website_description') or _ev.get('description') or '').strip()
@@ -880,7 +902,7 @@ if _events_ld:
     _itemlist = {
         "@context": "https://schema.org",
         "@type": "ItemList",
-        "name": f"LGBTQ+ Events in Lexington, {_week_start} to {_week_end}",
+        "name": f"LGBTQ+ Events in {_SITE_CITY}, {_week_start} to {_week_end}",
         "itemListElement": [
             {"@type": "ListItem", "position": _i + 1, "item": _o}
             for _i, _o in enumerate(_events_ld)
@@ -907,7 +929,7 @@ print(f"Updated EOTW banner: {eotw.get('name') if eotw else 'none'}")
 # its own tiny page carrying real og:title / og:description / og:image. The
 # "Tell Your Gays" share button (and link-less cards) point here, so a
 # Facebook share shows the ACTUAL event, and humans land on a real on-site
-# event page (traffic stays on lexingtongays.com).
+# event page (traffic stays on tulsagays.com).
 def _trunc(s, n):
     s = ' '.join((s or '').split())
     return s if len(s) <= n else s[:n - 1].rstrip() + '…'
@@ -922,7 +944,7 @@ def _render_event_page(p):
     _full = (_lead + '. ' if _lead else '') + (p.get('desc') or '')
     _og_desc = _trunc(_full, 300)
     _meta_desc = _trunc(_full, 160)
-    _title = _trunc(_name, 90) + ' | Lexington Gays'
+    _title = _trunc(_name, 90) + ' | Tulsa Gays'
     _src_btn = (f'<a class="ev-btn" href="{esc(p["url"])}" target="_blank" rel="noopener">Get tickets / more info &rarr;</a>'
                 if p.get('url') else '')
     _when_html = f'<p class="ev-when">{esc(p["when"])}</p>' if p.get('when') else ''
@@ -938,7 +960,7 @@ def _render_event_page(p):
 <meta name="robots" content="noindex, follow">
 <link rel="canonical" href="{esc(_deep)}">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="Lexington Gays">
+<meta property="og:site_name" content="Tulsa Gays">
 <meta property="og:locale" content="en_US">
 <meta property="og:title" content="{esc(_trunc(_name, 90))}">
 <meta property="og:description" content="{esc(_og_desc)}">
@@ -946,7 +968,7 @@ def _render_event_page(p):
 <meta property="og:image" content="{_img}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Lexington Gays: LGBTQ+ Event Guide">
+<meta property="og:image:alt" content="Tulsa Gays: LGBTQ+ Event Guide">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{esc(_trunc(_name, 90))}">
 <meta name="twitter:description" content="{esc(_meta_desc)}">
@@ -968,14 +990,14 @@ def _render_event_page(p):
 </head>
 <body>
 <div class="ev-wrap">
-<div class="ev-eyebrow">Lexington Gays · LGBTQ+ Event</div>
+<div class="ev-eyebrow">Tulsa Gays · LGBTQ+ Event</div>
 <h1 class="ev-name">{esc(_name)}</h1>
 {_when_html}
 {_venue_html}
 {_desc_html}
 {_src_btn}
 <a class="ev-btn alt" href="{esc(_deep)}">See it on the full calendar &rarr;</a>
-<p class="ev-foot">Found via <a href="/">lexingtongays.com</a>, every LGBTQ+ event in Lexington, every week. <a href="/newsletter.html">Get the newsletter &rarr;</a></p>
+<p class="ev-foot">Found via <a href="/">{_SITE_URL_CFG.split("//")[-1].replace("www.","")}</a>, every LGBTQ+ event in {_SITE_CITY}, every week. <a href="/newsletter.html">Get the newsletter &rarr;</a></p>
 </div>
 </body>
 </html>
