@@ -25,6 +25,20 @@ Allow: /
 User-agent: GoogleOther
 Allow: /
 
+# Google's AI training/grounding token. Added 2026-09-08: the file allowed
+# GoogleOther but never stated Google-Extended, so the strongest AI-search
+# permission on the site was left implicit. TulsaGays states it.
+User-agent: Google-Extended
+Allow: /
+
+# Applebot itself, not only Applebot-Extended (which was already listed).
+User-agent: Applebot
+Allow: /
+
+# Bing powers Copilot; TulsaGays allows it explicitly.
+User-agent: Bingbot
+Allow: /
+
 User-agent: Bytespider
 Allow: /
 

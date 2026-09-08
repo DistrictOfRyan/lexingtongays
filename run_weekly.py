@@ -146,6 +146,14 @@ def run_post(dry=False):
     # 3. Website — regenerate homepage + share pages (the step that was skipped).
     step("Update website (gen_website_html)", [PY, "tools/gen_website_html.py"],
          timeout=600, env=_env(LEXINGTONGAYS_SKIP_ENRICH="1"))
+    # 3b. Sitemap freshness (added 2026-09-08). The homepage changes weekly but
+    #     its <lastmod> was frozen: LexingtonGays' sitemap claimed 2026-07-10 on
+    #     a page written 2026-09-07, a two-month-old date on the one URL that
+    #     actually changes every week. Runs AFTER the website step so the stamp
+    #     reflects the page just written. Idempotent, and required=False so a
+    #     sitemap hiccup can never block the rest of the post phase.
+    step("Sitemap freshness", [PY, "tools/refresh_sitemap_freshness.py"],
+         timeout=120, required=False)
     if dry:
         step("Group blast DRY-RUN", [PY, "-m", "posting.group_blast", "--dry-run"],
              timeout=120, required=False)
