@@ -1046,7 +1046,7 @@ def _render_event_page(p):
     _full = (_lead + '. ' if _lead else '') + (p.get('desc') or '')
     _og_desc = _trunc(_full, 300)
     _meta_desc = _trunc(_full, 160)
-    _title = _trunc(_name, 90) + ' | Tulsa Gays'
+    _title = _trunc(_name, 90) + ' | Lexington Gays'
     _src_btn = (f'<a class="ev-btn" href="{esc(p["url"])}" target="_blank" rel="noopener">Get tickets / more info &rarr;</a>'
                 if p.get('url') else '')
     _when_html = f'<p class="ev-when">{esc(p["when"])}</p>' if p.get('when') else ''
@@ -1062,7 +1062,7 @@ def _render_event_page(p):
 <meta name="robots" content="noindex, follow">
 <link rel="canonical" href="{esc(_deep)}">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="Tulsa Gays">
+<meta property="og:site_name" content="Lexington Gays">
 <meta property="og:locale" content="en_US">
 <meta property="og:title" content="{esc(_trunc(_name, 90))}">
 <meta property="og:description" content="{esc(_og_desc)}">
@@ -1070,7 +1070,7 @@ def _render_event_page(p):
 <meta property="og:image" content="{_img}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Tulsa Gays: LGBTQ+ Event Guide">
+<meta property="og:image:alt" content="Lexington Gays: LGBTQ+ Event Guide">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{esc(_trunc(_name, 90))}">
 <meta name="twitter:description" content="{esc(_meta_desc)}">
@@ -1092,7 +1092,7 @@ def _render_event_page(p):
 </head>
 <body>
 <div class="ev-wrap">
-<div class="ev-eyebrow">Tulsa Gays · LGBTQ+ Event</div>
+<div class="ev-eyebrow">Lexington Gays · LGBTQ+ Event</div>
 <h1 class="ev-name">{esc(_name)}</h1>
 {_when_html}
 {_venue_html}
