@@ -34,7 +34,6 @@ Sources covered:
 
 import sys
 import os
-import json
 import logging
 import time
 from typing import List, Dict, Optional, Tuple
@@ -210,47 +209,18 @@ class ExtendedCalendarsScraper(BaseScraper):
         return events
 
     def _extract_json_ld(self, soup, site_name: str) -> List[Dict]:
-        """Extract Event items from JSON-LD blocks."""
-        events = []
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                raw = script.string
-                if not raw:
-                    continue
-                data = json.loads(raw)
-                items = data if isinstance(data, list) else [data]
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    # Handle @graph wrapper
-                    if item.get("@type") == "WebPage" and "@graph" in item:
-                        items = item["@graph"]
-                        continue
-                    if item.get("@type") not in ("Event", "SocialEvent", "MusicEvent", "DanceEvent",
-                                                   "ComedyEvent", "TheaterEvent", "ScreeningEvent",
-                                                   "ExhibitionEvent", "Festival", "SportsEvent"):
-                        continue
-                    name = item.get("name", "")
-                    if not name:
-                        continue
-                    start = item.get("startDate", "")
-                    date_str = str(start)[:10] if start else ""
-                    time_str = str(start)[11:16] if start and "T" in str(start) else ""
-                    location = item.get("location", {})
-                    venue = site_name
-                    if isinstance(location, dict):
-                        venue = location.get("name", site_name) or site_name
-                    elif isinstance(location, str):
-                        venue = location or site_name
-                    description = str(item.get("description", ""))[:500]
-                    event_url = item.get("url", "")
-                    events.append(self.make_event(
-                        name=name, date=date_str, time=time_str,
-                        venue=venue, description=description, url=event_url, priority=2
-                    ))
-            except Exception:
-                continue
-        return events
+        """Extract Event items from JSON-LD blocks.
+
+        Delegates to the shared BaseScraper helper (2026-10-12, ported from the
+        TulsaGays fix, project tulsagays-extended-calendars-extraction-bug). The
+        duplicate parser this replaced never unwrapped mainEntity/hasPart at
+        all, and its "@graph" unwrap only fired when the wrapping node's own
+        @type=="WebPage" (misses the common Yoast shape where @graph sits
+        beside @context with no @type), so real events nested under those keys
+        (e.g. a museum CollectionPage's hasPart, a venue WebPage's mainEntity)
+        silently returned 0 despite valid structured data on the page.
+        """
+        return self._extract_json_ld_from_soup(soup, venue_default=site_name, priority=2)
 
     def _extract_localist(self, soup, site_name: str, base_url: str) -> List[Dict]:
         """Extract events from Localist platform (used by Lexington Library, ULexington, OSU-Lexington)."""
